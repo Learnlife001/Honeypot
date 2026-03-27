@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Honeypot Live Dashboard</title>
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    :root {
+      --bg: ***REMOVED***0b1020;
+      --panel: ***REMOVED***111833;
+      --muted: ***REMOVED***a9b4d0;
+      --text: ***REMOVED***eef2ff;
+      --accent: ***REMOVED***7c3aed;
+      --good: ***REMOVED***22c55e;
+      --bad: ***REMOVED***ef4444;
+      --border: rgba(255,255,255,0.10);
+    }
+
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background: radial-gradient(1200px 800px at 10% 10%, rgba(124,58,237,0.25), transparent 60%),
+                  radial-gradient(900px 600px at 90% 20%, rgba(34,197,94,0.15), transparent 55%),
+                  var(--bg);
+      color: var(--text);
+    }
+
+    a { color: var(--text); }
+    .wrap { max-width: 1300px; margin: 0 auto; padding: 18px; }
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; margin-bottom: 14px;
+    }
+    .title { display: flex; flex-direction: column; gap: 4px; }
+    .title h1 { font-size: 18px; margin: 0; letter-spacing: 0.2px; }
+    .subtitle { color: var(--muted); font-size: 12px; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 8px 10px; border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--border);
+      font-size: 12px; color: var(--muted);
+    }
+    .dot { width: 8px; height: 8px; border-radius: 99px; background: var(--bad); }
+    .dot.ok { background: var(--good); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.35fr 0.65fr;
+      gap: 14px;
+    }
+    @media (max-width: 980px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: rgba(17,24,51,0.75);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+      overflow: hidden;
+    }
+    .panel .hd {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    .panel .hd .h { font-size: 13px; font-weight: 600; }
+    .panel .hd .h small { color: var(--muted); font-weight: 500; margin-left: 8px; }
+    .panel .bd { padding: 12px 14px; }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+    @media (max-width: 980px) {
+      .cards { grid-template-columns: repeat(2, 1fr); }
+    }
+    .card {
+      padding: 10px 12px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+    .card .k { color: var(--muted); font-size: 11px; }
+    .card .v { font-size: 18px; font-weight: 700; margin-top: 6px; }
+
+    ***REMOVED***map { width: 100%; height: 440px; border-radius: 12px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    th, td {
+      padding: 8px 6px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      text-align: left;
+      vertical-align: top;
+    }
+    th { color: var(--muted); font-weight: 600; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
+    .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 980px) { .cols2 { grid-template-columns: 1fr; } }
+
+    .list { margin: 0; padding-left: 18px; }
+    .list li { margin: 6px 0; color: var(--text); }
+    .muted { color: var(--muted); }
+
+    .btns { display: inline-flex; gap: 8px; }
+    .btn {
+      padding: 7px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      font-size: 12px;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .btn:hover { background: rgba(255,255,255,0.10); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="title">
+        <h1>SSH Honeypot Live Dashboard</h1>
+        <div class="subtitle">Streaming from <span class="mono">/stream</span> · Data snapshot from <span class="mono">cowrie_alerts.json</span></div>
+      </div>
+      <div class="btns">
+        <a class="btn" href="/map" target="_blank" rel="noopener">Open legacy map</a>
+        <button class="btn" id="btnRefresh">Refresh</button>
+        <span class="pill"><span id="dot" class="dot"></span><span id="conn">disconnected</span></span>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom: 14px;">
+      <div class="hd">
+        <div class="h">Overview <small id="generatedAt" class="mono"></small></div>
+        <div class="muted" style="font-size:12px;">Last attack: <span id="lastAttack" class="mono">—</span></div>
+      </div>
+      <div class="bd">
+        <div class="cards">
+          <div class="card"><div class="k">Total attacks (snapshot)</div><div class="v" id="statTotal">—</div></div>
+          <div class="card"><div class="k">Unique IPs (snapshot)</div><div class="v" id="statUnique">—</div></div>
+          <div class="card"><div class="k">Top country</div><div class="v" id="statTopCountry">—</div></div>
+          <div class="card"><div class="k">Events loaded</div><div class="v" id="statLoaded">—</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <div class="hd">
+          <div class="h">Live map</div>
+          <div class="muted">Markers update as events arrive</div>
+        </div>
+        <div class="bd">
+          <div id="map"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="hd">
+          <div class="h">Leaderboard</div>
+          <div class="muted">Top countries (snapshot)</div>
+        </div>
+        <div class="bd">
+          <ol class="list" id="countries"></ol>
+          <div class="muted" id="countriesEmpty" style="display:none;">No data yet.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top: 14px;">
+      <div class="hd">
+        <div class="h">Live attack feed</div>
+        <div class="muted">Newest first</div>
+      </div>
+      <div class="bd">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 220px;">IP</th>
+              <th>Geo</th>
+              <th style="width: 140px;">Coords</th>
+            </tr>
+          </thead>
+          <tbody id="feed"></tbody>
+        </table>
+        <div class="muted" id="feedEmpty" style="margin-top:10px; display:none;">No events yet.</div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top: 14px;">
+      <div class="hd">
+        <div class="h">Recent attacker IPs</div>
+        <div class="muted">Unique IP list (snapshot + live)</div>
+      </div>
+      <div class="bd">
+        <div class="cols2">
+          <div>
+            <ul class="list" id="ipList"></ul>
+            <div class="muted" id="ipEmpty" style="display:none;">No IPs yet.</div>
+          </div>
+          <div class="muted">
+            <div><span class="mono">/events</span> provides a snapshot; <span class="mono">/stream</span> pushes new entries when <span class="mono">cowrie_alerts.json</span> changes.</div>
+            <div style="margin-top: 10px;">If you want true all-time totals, write to an append-only log or DB; this dashboard intentionally doesn’t change your enrichment script.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const MAX_FEED_ROWS = 200;
+    const MAX_IPS = 80;
+
+    const el = (id) => document.getElementById(id);
+    const dot = el("dot");
+    const conn = el("conn");
+
+    let map, markersLayer;
+    let seenIds = new Set();
+    let ipSet = new Set();
+
+    function setConnected(ok) {
+      if (ok) {
+        dot.classList.add("ok");
+        conn.textContent = "connected";
+      } else {
+        dot.classList.remove("ok");
+        conn.textContent = "disconnected";
+      }
+    }
+
+    function evId(ev) {
+      return JSON.stringify([ev.ip, ev.country, ev.city, ev.lat, ev.lon, ev.timestamp || null]);
+    }
+
+    function safeText(s) {
+      if (s === null || s === undefined) return "";
+      return String(s);
+    }
+
+    function addMarker(ev) {
+      const lat = Number(ev.lat);
+      const lon = Number(ev.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+      const popup = `<b>${safeText(ev.ip)}</b><br/>${safeText(ev.city)}, ${safeText(ev.country)}<br/><span class="mono">${lat.toFixed(4)}, ${lon.toFixed(4)}</span>`;
+      L.circleMarker([lat, lon], {
+        radius: 6,
+        weight: 1,
+        color: "***REMOVED***c4b5fd",
+        fillColor: "***REMOVED***7c3aed",
+        fillOpacity: 0.6
+      }).bindPopup(popup).addTo(markersLayer);
+    }
+
+    function prependFeedRow(ev) {
+      const feed = el("feed");
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="mono">${safeText(ev.ip)}</td>
+        <td>${safeText(ev.country)}, ${safeText(ev.city)}</td>
+        <td class="mono">${Number(ev.lat).toFixed(4)}, ${Number(ev.lon).toFixed(4)}</td>
+      `;
+      feed.prepend(tr);
+
+      while (feed.children.length > MAX_FEED_ROWS) {
+        feed.removeChild(feed.lastChild);
+      }
+    }
+
+    function renderIpList() {
+      const ul = el("ipList");
+      ul.innerHTML = "";
+      const ips = Array.from(ipSet).slice(0, MAX_IPS);
+      ips.forEach(ip => {
+        const li = document.createElement("li");
+        li.className = "mono";
+        li.textContent = ip;
+        ul.appendChild(li);
+      });
+      el("ipEmpty").style.display = ips.length ? "none" : "block";
+      el("statUnique").textContent = ipSet.size;
+    }
+
+    function applyEvent(ev, source) {
+      if (!ev || !ev.ip) return;
+      const id = evId(ev);
+      if (seenIds.has(id) && source === "stream") return;
+      seenIds.add(id);
+
+      ipSet.add(ev.ip);
+      prependFeedRow(ev);
+      addMarker(ev);
+      renderIpList();
+
+      el("feedEmpty").style.display = "none";
+      el("statLoaded").textContent = seenIds.size;
+    }
+
+    async function refreshSnapshot() {
+      const [eventsResp, statsResp] = await Promise.all([
+        fetch("/events?limit=500"),
+        fetch("/stats")
+      ]);
+
+      const eventsJson = await eventsResp.json();
+      const stats = await statsResp.json();
+
+      el("generatedAt").textContent = stats.generated_at ? `generated ${stats.generated_at}` : "";
+      el("lastAttack").textContent = stats.last_attack_timestamp || "—";
+
+      el("statTotal").textContent = stats.total_attacks ?? "—";
+      el("statUnique").textContent = stats.unique_ip_count ?? "—";
+
+      const top = (stats.top_countries && stats.top_countries[0]) ? stats.top_countries[0] : null;
+      el("statTopCountry").textContent = top ? `${top.country} (${top.count})` : "—";
+
+      // leaderboard
+      const list = el("countries");
+      list.innerHTML = "";
+      const rows = (stats.top_countries || []).slice(0, 10);
+      rows.forEach(r => {
+        const li = document.createElement("li");
+        li.innerHTML = `<span>${safeText(r.country)}</span> <span class="muted">(${safeText(r.count)})</span>`;
+        list.appendChild(li);
+      });
+      el("countriesEmpty").style.display = rows.length ? "none" : "block";
+
+      // seed from snapshot events (newest first if backend sorts)
+      const events = (eventsJson.events || []);
+      events.forEach(ev => applyEvent(ev, "snapshot"));
+
+      el("feedEmpty").style.display = seenIds.size ? "none" : "block";
+      el("statLoaded").textContent = seenIds.size;
+    }
+
+    function initMap() {
+      map = L.map("map", { worldCopyJump: true }).setView([20, 0], 2);
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap contributors"
+      }).addTo(map);
+      markersLayer = L.layerGroup().addTo(map);
+    }
+
+    function startStream() {
+      const es = new EventSource("/stream");
+
+      es.addEventListener("open", () => setConnected(true));
+      es.addEventListener("error", () => setConnected(false));
+
+      es.addEventListener("hello", (msg) => {
+        setConnected(true);
+      });
+
+      es.addEventListener("attack", (msg) => {
+        try {
+          const ev = JSON.parse(msg.data);
+          applyEvent(ev, "stream");
+          // update stats opportunistically
+          refreshStatsOnly();
+        } catch (_) {}
+      });
+
+      // keepalive is intentionally ignored
+      return es;
+    }
+
+    async function refreshStatsOnly() {
+      try {
+        const statsResp = await fetch("/stats");
+        const stats = await statsResp.json();
+        el("generatedAt").textContent = stats.generated_at ? `generated ${stats.generated_at}` : "";
+        el("lastAttack").textContent = stats.last_attack_timestamp || "—";
+        el("statTotal").textContent = stats.total_attacks ?? "—";
+        const top = (stats.top_countries && stats.top_countries[0]) ? stats.top_countries[0] : null;
+        el("statTopCountry").textContent = top ? `${top.country} (${top.count})` : "—";
+
+        // update leaderboard too
+        const list = el("countries");
+        list.innerHTML = "";
+        const rows = (stats.top_countries || []).slice(0, 10);
+        rows.forEach(r => {
+          const li = document.createElement("li");
+          li.innerHTML = `<span>${safeText(r.country)}</span> <span class="muted">(${safeText(r.count)})</span>`;
+          list.appendChild(li);
+        });
+        el("countriesEmpty").style.display = rows.length ? "none" : "block";
+      } catch (_) {}
+    }
+
+    // Boot
+    initMap();
+    setConnected(false);
+    refreshSnapshot();
+    startStream();
+    el("btnRefresh").addEventListener("click", () => refreshSnapshot());
+  </script>
+</body>
+</html>
+

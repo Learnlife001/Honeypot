@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Honeypot Dashboard</title>
+</head>
+<body>
+  <h1>SSH Honeypot Monitoring</h1>
+
+  <h2><a href="/map" target="_blank">View Attack Map</a></h2>
+
+  <h3>Recent Alerts</h3>
+  <ul>
+    {% for alert in alerts %}
+      <li>{{ alert.ip }} - {{ alert.country }}, {{ alert.city }}</li>
+    {% else %}
+      <li>No alerts available.</li>
+    {% endfor %}
+  </ul>
+</body>
+</html>
+

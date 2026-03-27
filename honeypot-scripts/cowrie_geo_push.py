@@ -7,22 +7,18 @@ from datetime import datetime, timedelta, timezone
 import geoip2.database
 import smtplib
 from email.mime.text import MIMEText
-from dotenv import load_dotenv
 
-***REMOVED*** Load environment variables from .env file
-load_dotenv()
+***REMOVED*** Config (HARD-CODED for VM use only)
+LOKI_URL = "http://localhost:3100/loki/api/v1/push"
+LOG_FILE = "/home/azureuser/cowrie/var/log/cowrie/cowrie.log"
+GEO_DB_PATH = "/var/lib/GeoIP/GeoLite2-City.mmdb"
+BOT_TOKEN = "***REMOVED***"
+CHAT_ID = "***REMOVED***"
+LOG_ALERT_FILE = "/home/azureuser/telegram_alert_log.txt"
 
-***REMOVED*** Config
-LOKI_URL = os.getenv("LOKI_URL", "http://localhost:3100/loki/api/v1/push")
-LOG_FILE = os.getenv("LOG_FILE", "/home/azureuser/cowrie/var/log/cowrie/cowrie.log")
-GEO_DB_PATH = os.getenv("GEO_DB_PATH", "/var/lib/GeoIP/GeoLite2-City.mmdb")
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-LOG_ALERT_FILE = os.getenv("LOG_ALERT_FILE", "/home/azureuser/telegram_alert_log.txt")
-
-EMAIL_USER = os.getenv("EMAIL_USER")
-EMAIL_PASS = os.getenv("EMAIL_PASS")
-EMAIL_TO = os.getenv("EMAIL_TO", "ilearnlife23@gmail.com")
+EMAIL_USER = "***REMOVED***"
+EMAIL_PASS = "***REMOVED***" 
+EMAIL_TO = "***REMOVED***"
 
 alerted_ips = set()
 
@@ -136,7 +132,9 @@ def process_logs():
     if new_alerts:
         send_telegram_batch_alert(new_alerts)
         send_email_batch_alert(new_alerts)
+        with open("cowrie_alerts.json", "w") as f:
+            json.dump(new_alerts, f, indent=2)
 
 if __name__ == "__main__":
     process_logs()
-    
+
