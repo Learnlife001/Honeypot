@@ -4,6 +4,7 @@ import sqlite3
 import subprocess
 import sys
 import atexit
+from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 
 app = Flask(__name__)
@@ -47,6 +48,14 @@ def start_scheduler():
         replace_existing=True,
         max_instances=1,
         coalesce=True,
+    )
+    scheduler.add_job(
+        run_update_attack_map,
+        trigger="date",
+        run_date=datetime.now(),
+        id="update_attack_map_startup",
+        replace_existing=True,
+        max_instances=1,
     )
     scheduler.start()
 
