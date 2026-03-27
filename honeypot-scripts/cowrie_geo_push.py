@@ -71,22 +71,32 @@ def init_db():
             city TEXT,
             username TEXT,
             password TEXT,
-            timestamp TEXT
+            timestamp TEXT,
+            latitude REAL,
+            longitude REAL
         )
         """
     )
+    for stmt in (
+        "ALTER TABLE alerts ADD COLUMN latitude REAL",
+        "ALTER TABLE alerts ADD COLUMN longitude REAL",
+    ):
+        try:
+            conn.execute(stmt)
+        except sqlite3.OperationalError:
+            pass
     conn.commit()
     conn.close()
 
 
-def insert_alert(ip, country, city, username, password, timestamp):
+def insert_alert(ip, country, city, username, password, timestamp, latitude=None, longitude=None):
     conn = get_db_connection()
     conn.execute(
         """
-        INSERT INTO alerts (ip, country, city, username, password, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO alerts (ip, country, city, username, password, timestamp, latitude, longitude)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (ip, country, city, username, password, timestamp),
+        (ip, country, city, username, password, timestamp, latitude, longitude),
     )
     conn.commit()
     conn.close()
@@ -213,7 +223,7 @@ def process_logs():
                 "password": password,
                 "timestamp": event_timestamp
             })
-            insert_alert(ip, country, city, username, password, event_timestamp)
+            insert_alert(ip, country, city, username, password, event_timestamp, lat, lon)
             with open(LOG_ALERT_FILE, "a", encoding="utf-8") as logf:
                 logf.write(f"{ip},{city},{country},{event_timestamp}\n")
 

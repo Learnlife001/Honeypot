@@ -1,77 +1,71 @@
 import os
-import pandas as pd
+import sqlite3
+
 import folium
 from folium.plugins import HeatMap, MarkerCluster
 
-INPUT_FILE = "new_ips.csv"
-OUTPUT_FILE = "attack_ips_geo.csv"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-MAP_FILE = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "honeypot-web", "static", "attack_map.html"))
+DB_PATH = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "honeypot-web", "alerts.db"))
+MAP_FILE = os.path.join(SCRIPT_DIR, "attack_map.html")
 
 
 def main():
-    try:
-        df = pd.read_csv(INPUT_FILE)
-    except FileNotFoundError:
-        print("new_ips.csv not found")
+    if not os.path.exists(DB_PATH):
+        print(f"Database not found: {DB_PATH}")
         return
 
-    if df.empty:
-        print("new_ips.csv is empty")
-        return
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        """
+        SELECT ip, country, city, latitude, longitude, timestamp
+        FROM alerts
+        WHERE latitude IS NOT NULL
+        AND longitude IS NOT NULL
+        """
+    ).fetchall()
+    conn.close()
 
-    ip_column = "ip" if "ip" in df.columns else "source_ip" if "source_ip" in df.columns else None
-    required_columns = [ip_column, "latitude", "longitude"]
+    if not rows:
+        print("No alerts with coordinates in database; writing empty world map.")
+        center_lat, center_lon = 20.0, 0.0
+    else:
+        lats = [float(r["latitude"]) for r in rows]
+        lons = [float(r["longitude"]) for r in rows]
+        center_lat = sum(lats) / len(lats)
+        center_lon = sum(lons) / len(lons)
 
-    for col in required_columns:
-        if col not in df.columns:
-            print(f"Missing required column: {col}")
-            return
-
-    df = df.dropna(subset=["latitude", "longitude"]).copy()
-    df["country"] = df["country"] if "country" in df.columns else "Unknown"
-    df["city"] = df["city"] if "city" in df.columns else "Unknown"
-    df["timestamp"] = df["timestamp"] if "timestamp" in df.columns else "Unknown"
-
-    if df.empty:
-        print("No valid coordinate data available")
-        return
-
-    os.makedirs(os.path.dirname(MAP_FILE), exist_ok=True)
-    df.to_csv(OUTPUT_FILE, index=False)
-
-    center_lat = df["latitude"].mean()
-    center_lon = df["longitude"].mean()
-
-    attack_map = folium.Map(
-        location=[center_lat, center_lon],
-        zoom_start=2
-    )
-
+    attack_map = folium.Map(location=[center_lat, center_lon], zoom_start=2)
     marker_cluster = MarkerCluster(name="Attack Markers").add_to(attack_map)
     heat_data = []
 
-    for _, row in df.iterrows():
+    for row in rows:
+        lat = float(row["latitude"])
+        lon = float(row["longitude"])
+        ip = row["ip"] or "Unknown"
+        country = row["country"] or "Unknown"
+        city = row["city"] or "Unknown"
+        ts = row["timestamp"] or "Unknown"
         popup_text = (
-            f"IP: {row[ip_column]}<br>"
-            f"Country: {row['country']}<br>"
-            f"City: {row['city']}<br>"
-            f"Timestamp: {row['timestamp']}"
+            f"IP: {ip}<br>"
+            f"Country: {country}<br>"
+            f"City: {city}<br>"
+            f"Timestamp: {ts}"
         )
-
         folium.Marker(
-            location=[row["latitude"], row["longitude"]],
+            location=[lat, lon],
             popup=popup_text,
-            tooltip=str(row[ip_column]),
+            tooltip=str(ip),
             icon=folium.Icon(color="red", icon="info-sign"),
         ).add_to(marker_cluster)
-        heat_data.append([row["latitude"], row["longitude"]])
+        heat_data.append([lat, lon])
 
-    HeatMap(heat_data, name="Attack Density", radius=10, blur=14).add_to(attack_map)
+    if heat_data:
+        HeatMap(heat_data, name="Attack Density", radius=10, blur=14).add_to(attack_map)
     folium.LayerControl(collapsed=False).add_to(attack_map)
 
     attack_map.save(MAP_FILE)
-
     print(f"Updated map saved as {MAP_FILE}")
 
 

@@ -10,7 +10,7 @@ app = Flask(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "alerts.db")
-MAP_DIR = os.path.join(BASE_DIR, "static")
+MAP_DIR = os.path.join(BASE_DIR, "..", "honeypot-scripts")
 MAP_FILE = "attack_map.html"
 UPDATE_MAP_SCRIPT = os.path.join(BASE_DIR, "..", "honeypot-scripts", "update_attack_map.py")
 scheduler = BackgroundScheduler()
@@ -63,10 +63,20 @@ def init_db():
             city TEXT,
             username TEXT,
             password TEXT,
-            timestamp TEXT
+            timestamp TEXT,
+            latitude REAL,
+            longitude REAL
         )
         """
     )
+    for stmt in (
+        "ALTER TABLE alerts ADD COLUMN latitude REAL",
+        "ALTER TABLE alerts ADD COLUMN longitude REAL",
+    ):
+        try:
+            conn.execute(stmt)
+        except sqlite3.OperationalError:
+            pass
     conn.commit()
     conn.close()
 
