@@ -2,10 +2,8 @@ import pandas as pd
 import folium
 import subprocess
 
-# Function to geolocate an IP using mmdblookup with better error handling
 def geolocate_ip(ip):
     try:
-        # Run mmdblookup commands to get geolocation data
         country_cmd = f"mmdblookup -f /var/lib/GeoIP/GeoLite2-City.mmdb --ip {ip} country names en | sed 's/ <utf8_string>//'"
         country = subprocess.check_output(country_cmd, shell=True, text=True).strip()
         if not country:
@@ -39,20 +37,15 @@ def geolocate_ip(ip):
 
     return country, city, latitude, longitude
 
-# Step 1: Read the existing attack_ips_geo.csv (if it exists)
 try:
     existing_df = pd.read_csv('attack_ips_geo.csv')
 except FileNotFoundError:
-    # Create an empty DataFrame with the correct columns if the file doesn't exist
     existing_df = pd.DataFrame(columns=['source_ip', 'country', 'city', 'latitude', 'longitude'])
 
-# Step 2: Read the new IP data from Grafana export (new_ips.csv)
 grafana_df = pd.read_csv('new_ips.csv')
 
-# Extract unique IPs from the Grafana data
 unique_ips = grafana_df['source_ip'].dropna().unique()
 
-# Create a DataFrame for the new IPs
 new_data = []
 for ip in unique_ips:
     print(f"Geolocating IP: {ip}")
@@ -66,14 +59,11 @@ for ip in unique_ips:
     })
 new_df = pd.DataFrame(new_data)
 
-# Step 3: Merge the new data with the existing data, avoiding duplicates
 combined_df = pd.concat([existing_df, new_df], ignore_index=True)
 combined_df = combined_df.drop_duplicates(subset=['source_ip'], keep='last')
 
-# Step 4: Save the updated CSV
 combined_df.to_csv('attack_ips_geo.csv', index=False)
 
-# Step 5: Regenerate the map
 center_lat = combined_df['latitude'].mean()
 center_lon = combined_df['longitude'].mean()
 attack_map = folium.Map(location=[center_lat, center_lon], zoom_start=2)
