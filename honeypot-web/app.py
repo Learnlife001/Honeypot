@@ -4,19 +4,27 @@ import os
 
 app = Flask(__name__)
 
+
 @app.route("/")
 def dashboard():
     alerts = []
-    ***REMOVED*** Load alerts from JSON if it exists
-    if os.path.exists("cowrie_alerts.json"):
-        with open("cowrie_alerts.json") as f:
+
+    alerts_path = "/home/azureuser/cowrie-geoalert-honeypot/honeypot-web/cowrie_alerts.json"
+
+    if os.path.exists(alerts_path):
+        with open(alerts_path) as f:
             alerts = json.load(f)
+
     return render_template("index.html", alerts=alerts)
 
+
 @app.route("/map")
-def map():
-    ***REMOVED*** Serve the generated attack map
-    return send_from_directory("static", "attack_map.html")
+def map_view():
+    return send_from_directory(
+        "/home/azureuser/cowrie-geoalert-honeypot/honeypot-scripts",
+        "attack_map.html"
+    )
+
 
 if __name__ == "__main__":
     print("Flask app running at http://<your_vm_ip>:5000/")
