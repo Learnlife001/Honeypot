@@ -2,23 +2,28 @@ import os
 import re
 import time
 import json
+import sqlite3
 import requests
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import geoip2.database
 import smtplib
 from email.mime.text import MIMEText
 from dotenv import load_dotenv
 
-***REMOVED*** Load environment variables from .env (project root) if present
+# Load environment variables from .env (project root) if present
 load_dotenv()
 
-***REMOVED*** Config (use env vars; do not hardcode secrets)
+# Config (use env vars; do not hardcode secrets)
 LOKI_URL = os.getenv("LOKI_URL", "http://localhost:3100/loki/api/v1/push")
 LOG_FILE = os.getenv("LOG_FILE", "/home/azureuser/cowrie/var/log/cowrie/cowrie.log")
 GEO_DB_PATH = os.getenv("GEO_DB_PATH", "/var/lib/GeoIP/GeoLite2-City.mmdb")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 LOG_ALERT_FILE = os.getenv("LOG_ALERT_FILE", "/home/azureuser/telegram_alert_log.txt")
+ALERTS_DB_PATH = os.getenv(
+    "ALERTS_DB_PATH",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "honeypot-web", "alerts.db"),
+)
 
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
@@ -27,6 +32,38 @@ EMAIL_PASS = os.getenv("EMAIL_PASS")
 EMAIL_TO = os.getenv("EMAIL_TO")
 
 alerted_ips = set()
+
+
+def init_db():
+    conn = sqlite3.connect(ALERTS_DB_PATH)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS alerts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ip TEXT,
+            country TEXT,
+            city TEXT,
+            username TEXT,
+            password TEXT,
+            timestamp TEXT
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def insert_alert(ip, country, city, username, password, timestamp):
+    conn = sqlite3.connect(ALERTS_DB_PATH)
+    conn.execute(
+        """
+        INSERT INTO alerts (ip, country, city, username, password, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (ip, country, city, username, password, timestamp),
+    )
+    conn.commit()
+    conn.close()
 
 def resolve_geo(ip, reader):
     try:
@@ -90,9 +127,9 @@ def send_email_batch_alert(entries):
         print(f"❌ Email error: {e}")
 
 def process_logs():
+    init_db()
     new_alerts = []
     seen_ips = set()
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=20)
 
     if not os.path.exists(LOG_FILE):
         print("Log file not found.")
@@ -116,6 +153,9 @@ def process_logs():
         city, country, lat, lon = resolve_geo(ip, reader)
         if lat is None or lon is None:
             continue
+        event_timestamp = datetime.now(timezone.utc).isoformat()
+        username = "Unknown"
+        password = "Unknown"
         timestamp_ns = str(int(time.time() * 1e9))
         structured_log = json.dumps({
             "ip": ip,
@@ -123,7 +163,7 @@ def process_logs():
             "country": country,
             "lat": lat,
             "lon": lon,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": event_timestamp
         })
         payload = {
             "streams": [
@@ -136,16 +176,18 @@ def process_logs():
         requests.post(LOKI_URL, json=payload)
         new_alerts.append({
             "ip": ip, "city": city, "country": country,
-            "lat": lat, "lon": lon
+            "lat": lat, "lon": lon,
+            "username": username,
+            "password": password,
+            "timestamp": event_timestamp
         })
+        insert_alert(ip, country, city, username, password, event_timestamp)
         with open(LOG_ALERT_FILE, "a") as logf:
-            logf.write(f"{ip},{city},{country},{datetime.now(timezone.utc).isoformat()}\n")
+            logf.write(f"{ip},{city},{country},{event_timestamp}\n")
 
     if new_alerts:
         send_telegram_batch_alert(new_alerts)
         send_email_batch_alert(new_alerts)
-        with open("cowrie_alerts.json", "w") as f:
-            json.dump(new_alerts, f, indent=2)
 
 if __name__ == "__main__":
     process_logs()
