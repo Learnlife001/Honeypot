@@ -17,7 +17,7 @@ telegram_alert_log.txt
 
 *.sqlite3
 *.db
-
+alerts.db
 *.pem
 *.key
 *.crt
