@@ -46,3 +46,7 @@ Thumbs.db
 node_modules/
 .next/
 out/
+
+honeypot-web/static/attack_map.html
+honeypot-scripts/new_ips.csv
+honeypot-scripts/attack_ips_geo.csv

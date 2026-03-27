@@ -35,7 +35,7 @@
     }
     .map-iframe {
       width: 100%;
-      height: 70vh;
+      height: 52vh;
       border: 0;
       border-radius: 10px;
       background: #000;
@@ -46,6 +46,15 @@
     }
     .timeline-wrapper {
       height: 260px;
+    }
+    .replay-controls {
+      margin-top: 0.75rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid #24314f;
+    }
+    .replay-chart-wrapper {
+      height: 170px;
+      margin-top: 0.5rem;
     }
   </style>
 </head>
@@ -87,6 +96,18 @@
         <div class="panel h-100">
           <h5>Attack Map</h5>
           <iframe src="/map" class="map-iframe" title="Attack Map"></iframe>
+          <div class="replay-controls">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <small class="text-info">Hourly Attack Replay</small>
+              <small id="replayHourLabel">Hour: --</small>
+            </div>
+            <input id="timelineSlider" type="range" min="0" max="0" value="0" class="form-range">
+            <div class="d-flex gap-2 mt-2">
+              <button id="playReplayBtn" class="btn btn-sm btn-outline-info">Play</button>
+              <button id="pauseReplayBtn" class="btn btn-sm btn-outline-light">Pause</button>
+            </div>
+            <div class="replay-chart-wrapper"><canvas id="regionReplayChart"></canvas></div>
+          </div>
         </div>
       </div>
 
@@ -100,6 +121,8 @@
           <div class="chart-wrapper"><canvas id="ipsChart"></canvas></div>
           <h5>Recent Credential Attempts (Usernames)</h5>
           <div class="chart-wrapper"><canvas id="usersChart"></canvas></div>
+          <h5>Top attempted passwords</h5>
+          <div class="chart-wrapper"><canvas id="passwordsChart"></canvas></div>
         </div>
       </div>
     </div>
@@ -109,7 +132,11 @@
     let countriesChart;
     let ipsChart;
     let usersChart;
+    let passwordsChart;
     let timelineChart;
+    let regionReplayChart;
+    let timelineRegions = [];
+    let replayTimer = null;
 
     function createBarChart(ctx, label, labels, values, color) {
       return new Chart(ctx, {
@@ -185,6 +212,85 @@
       });
     }
 
+    function createRegionReplayChart(ctx, labels, values) {
+      return new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: labels,
+          datasets: [{
+            label: "Attacks by country",
+            data: values,
+            backgroundColor: "rgba(153, 102, 255, 0.7)"
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            x: {
+              ticks: { color: "#dbe6ff" },
+              grid: { color: "#24314f" }
+            },
+            y: {
+              beginAtZero: true,
+              ticks: { color: "#dbe6ff" },
+              grid: { color: "#24314f" }
+            }
+          }
+        }
+      });
+    }
+
+    function renderReplayFrame(index) {
+      if (!timelineRegions.length) {
+        return;
+      }
+
+      const safeIndex = Math.max(0, Math.min(index, timelineRegions.length - 1));
+      const bucket = timelineRegions[safeIndex];
+      const regions = bucket.regions || {};
+      const labels = Object.keys(regions);
+      const values = Object.values(regions);
+      const hourLabel = (bucket.hour || "").slice(0, 13) + ":00";
+
+      document.getElementById("timelineSlider").value = safeIndex;
+      document.getElementById("replayHourLabel").textContent = `Hour: ${hourLabel}`;
+
+      if (!regionReplayChart) {
+        regionReplayChart = createRegionReplayChart(
+          document.getElementById("regionReplayChart"),
+          labels,
+          values
+        );
+      } else {
+        updateChart(regionReplayChart, labels, values);
+      }
+    }
+
+    function stopReplay() {
+      if (replayTimer) {
+        clearInterval(replayTimer);
+        replayTimer = null;
+      }
+    }
+
+    function startReplay() {
+      if (!timelineRegions.length || replayTimer) {
+        return;
+      }
+      replayTimer = setInterval(() => {
+        const slider = document.getElementById("timelineSlider");
+        let next = Number(slider.value) + 1;
+        if (next >= timelineRegions.length) {
+          next = 0;
+        }
+        renderReplayFrame(next);
+      }, 1000);
+    }
+
     async function fetchAlerts() {
       try {
         const response = await fetch("/alerts-data");
@@ -220,6 +326,8 @@
         const ipValues = Object.values(stats.ip_counts || {});
         const userLabels = Object.keys(stats.username_counts || {});
         const userValues = Object.values(stats.username_counts || {});
+        const passwordLabels = Object.keys(stats.password_counts || {});
+        const passwordValues = Object.values(stats.password_counts || {});
         const counter = document.getElementById("attackCounter");
         counter.textContent = stats.total_attacks || 0;
 
@@ -245,10 +353,18 @@
             userValues,
             "rgba(75, 192, 192, 0.7)"
           );
+          passwordsChart = createBarChart(
+            document.getElementById("passwordsChart"),
+            "Passwords",
+            passwordLabels,
+            passwordValues,
+            "rgba(255, 159, 64, 0.8)"
+          );
         } else {
           updateChart(countriesChart, countryLabels, countryValues);
           updateChart(ipsChart, ipLabels, ipValues);
           updateChart(usersChart, userLabels, userValues);
+          updateChart(passwordsChart, passwordLabels, passwordValues);
         }
       } catch (error) {
         console.error("Failed to fetch stats:", error);
@@ -276,13 +392,46 @@
       }
     }
 
+    async function fetchTimelineRegions() {
+      try {
+        const response = await fetch("/timeline-regions");
+        timelineRegions = await response.json();
+        const slider = document.getElementById("timelineSlider");
+
+        if (!timelineRegions.length) {
+          slider.min = 0;
+          slider.max = 0;
+          slider.value = 0;
+          document.getElementById("replayHourLabel").textContent = "Hour: --";
+          return;
+        }
+
+        slider.min = 0;
+        slider.max = String(timelineRegions.length - 1);
+
+        const current = Number(slider.value || 0);
+        renderReplayFrame(Math.min(current, timelineRegions.length - 1));
+      } catch (error) {
+        console.error("Failed to fetch timeline regions:", error);
+      }
+    }
+
+    document.getElementById("timelineSlider").addEventListener("input", (event) => {
+      stopReplay();
+      renderReplayFrame(Number(event.target.value));
+    });
+    document.getElementById("playReplayBtn").addEventListener("click", startReplay);
+    document.getElementById("pauseReplayBtn").addEventListener("click", stopReplay);
+
     fetchAlerts();
     fetchStats();
     fetchTimeline();
+    fetchTimelineRegions();
 
     setInterval(fetchAlerts, 5000);
     setInterval(fetchStats, 10000);
     setInterval(fetchTimeline, 10000);
+    setInterval(fetchTimelineRegions, 10000);
   </script>
 </body>
 </html>

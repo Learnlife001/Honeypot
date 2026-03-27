@@ -1,23 +1,59 @@
 from flask import Flask, jsonify, render_template, send_from_directory
 import os
 import sqlite3
+import subprocess
+import sys
+import atexit
+from apscheduler.schedulers.background import BackgroundScheduler
 
 app = Flask(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "alerts.db")
-MAP_DIR = os.path.join(BASE_DIR, "..", "honeypot-scripts")
+MAP_DIR = os.path.join(BASE_DIR, "static")
 MAP_FILE = "attack_map.html"
+UPDATE_MAP_SCRIPT = os.path.join(BASE_DIR, "..", "honeypot-scripts", "update_attack_map.py")
+scheduler = BackgroundScheduler()
 
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL;")
     conn.row_factory = sqlite3.Row
     return conn
 
 
+def run_update_attack_map():
+    try:
+        subprocess.run(
+            [sys.executable, UPDATE_MAP_SCRIPT],
+            cwd=os.path.dirname(UPDATE_MAP_SCRIPT),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        print(f"update_attack_map.py failed: {exc.stderr or exc}")
+
+
+def start_scheduler():
+    if scheduler.running:
+        return
+    scheduler.add_job(
+        run_update_attack_map,
+        trigger="interval",
+        minutes=5,
+        id="update_attack_map_job",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    scheduler.start()
+
+
 def init_db():
     conn = get_db_connection()
+    conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS alerts (
@@ -75,6 +111,7 @@ def get_attack_statistics():
         "country_counts": get_top_counts("country", 10),
         "ip_counts": get_top_counts("ip", 10),
         "username_counts": get_top_counts("username", 10),
+        "password_counts": get_top_counts("password", 10),
         "total_attacks": total_row["total"] if total_row else 0,
     }
 
@@ -95,7 +132,36 @@ def get_timeline(hours=24):
     return [{"hour": row["hour_bucket"], "count": row["count"]} for row in rows]
 
 
+def get_timeline_regions(hours=24):
+    conn = get_db_connection()
+    rows = conn.execute(
+        """
+        SELECT
+            strftime('%Y-%m-%d %H:00:00', timestamp) AS hour_bucket,
+            COALESCE(NULLIF(TRIM(country), ''), 'Unknown') AS country,
+            COUNT(*) AS count
+        FROM alerts
+        WHERE datetime(timestamp) >= datetime('now', ?)
+        GROUP BY hour_bucket, country
+        ORDER BY hour_bucket ASC, count DESC
+        """,
+        (f"-{hours} hours",),
+    ).fetchall()
+    conn.close()
+
+    grouped = {}
+    for row in rows:
+        hour = row["hour_bucket"]
+        if hour not in grouped:
+            grouped[hour] = {}
+        grouped[hour][row["country"]] = row["count"]
+
+    return [{"hour": hour, "regions": grouped[hour]} for hour in grouped]
+
+
 init_db()
+start_scheduler()
+atexit.register(lambda: scheduler.shutdown(wait=False) if scheduler.running else None)
 
 
 @app.route("/")
@@ -122,6 +188,11 @@ def stats():
 @app.route("/timeline")
 def timeline():
     return jsonify(get_timeline())
+
+
+@app.route("/timeline-regions")
+def timeline_regions():
+    return jsonify(get_timeline_regions())
 
 
 if __name__ == "__main__":
