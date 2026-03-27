@@ -7,18 +7,24 @@ from datetime import datetime, timedelta, timezone
 import geoip2.database
 import smtplib
 from email.mime.text import MIMEText
+from dotenv import load_dotenv
 
-***REMOVED*** Config (HARD-CODED for VM use only)
-LOKI_URL = "http://localhost:3100/loki/api/v1/push"
-LOG_FILE = "/home/azureuser/cowrie/var/log/cowrie/cowrie.log"
-GEO_DB_PATH = "/var/lib/GeoIP/GeoLite2-City.mmdb"
-BOT_TOKEN = "***REMOVED***"
-CHAT_ID = "***REMOVED***"
-LOG_ALERT_FILE = "/home/azureuser/telegram_alert_log.txt"
+***REMOVED*** Load environment variables from .env (project root) if present
+load_dotenv()
 
-EMAIL_USER = "***REMOVED***"
-EMAIL_PASS = "***REMOVED***" 
-EMAIL_TO = "***REMOVED***"
+***REMOVED*** Config (use env vars; do not hardcode secrets)
+LOKI_URL = os.getenv("LOKI_URL", "http://localhost:3100/loki/api/v1/push")
+LOG_FILE = os.getenv("LOG_FILE", "/home/azureuser/cowrie/var/log/cowrie/cowrie.log")
+GEO_DB_PATH = os.getenv("GEO_DB_PATH", "/var/lib/GeoIP/GeoLite2-City.mmdb")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+LOG_ALERT_FILE = os.getenv("LOG_ALERT_FILE", "/home/azureuser/telegram_alert_log.txt")
+
+SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+EMAIL_USER = os.getenv("EMAIL_USER")
+EMAIL_PASS = os.getenv("EMAIL_PASS")
+EMAIL_TO = os.getenv("EMAIL_TO")
 
 alerted_ips = set()
 
@@ -48,13 +54,16 @@ def send_telegram_batch_alert(entries):
         post_telegram(message)
 
 def post_telegram(text):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("❌ Telegram credentials missing (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID).")
+        return
     payload = {
-        "chat_id": CHAT_ID,
+        "chat_id": TELEGRAM_CHAT_ID,
         "text": text,
         "parse_mode": "Markdown"
     }
     try:
-        resp = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=payload)
+        resp = requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", json=payload)
         if resp.status_code == 200:
             print("✔️ Telegram alert sent.")
         else:
@@ -63,13 +72,16 @@ def post_telegram(text):
         print(f"❌ Telegram exception: {e}")
 
 def send_email_batch_alert(entries):
+    if not EMAIL_USER or not EMAIL_PASS or not EMAIL_TO:
+        print("❌ Email credentials missing (EMAIL_USER / EMAIL_PASS / EMAIL_TO).")
+        return
     body = "\n".join([f"{e['ip']} - {e['city']}, {e['country']}" for e in entries])
     msg = MIMEText(f"Honeypot Alert:\n\n{body}")
     msg["Subject"] = "Cowrie Batch Alert"
     msg["From"] = EMAIL_USER
     msg["To"] = EMAIL_TO
     try:
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
             server.starttls()
             server.login(EMAIL_USER, EMAIL_PASS)
             server.send_message(msg)

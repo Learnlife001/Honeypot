@@ -1,12 +1,17 @@
 import pandas as pd
 import folium
 import subprocess
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 ***REMOVED*** Function to geolocate an IP using mmdblookup with better error handling
 def geolocate_ip(ip):
     try:
         ***REMOVED*** Run mmdblookup commands to get geolocation data
-        country_cmd = f"mmdblookup -f /var/lib/GeoIP/GeoLite2-City.mmdb --ip {ip} country names en | sed 's/ <utf8_string>//'"
+        geo_db = os.getenv("GEO_DB_PATH", "/var/lib/GeoIP/GeoLite2-City.mmdb")
+        country_cmd = f"mmdblookup -f {geo_db} --ip {ip} country names en | sed 's/ <utf8_string>//'"
         country = subprocess.check_output(country_cmd, shell=True, text=True).strip()
         if not country:
             country = "Unknown"
@@ -15,7 +20,8 @@ def geolocate_ip(ip):
         country = "Unknown"
 
     try:
-        city_cmd = f"mmdblookup -f /var/lib/GeoIP/GeoLite2-City.mmdb --ip {ip} city names en | sed 's/ <utf8_string>//'"
+        geo_db = os.getenv("GEO_DB_PATH", "/var/lib/GeoIP/GeoLite2-City.mmdb")
+        city_cmd = f"mmdblookup -f {geo_db} --ip {ip} city names en | sed 's/ <utf8_string>//'"
         city = subprocess.check_output(city_cmd, shell=True, text=True).strip()
         if not city:
             city = "Unknown"
@@ -24,14 +30,16 @@ def geolocate_ip(ip):
         city = "Unknown"
 
     try:
-        lat_cmd = f"mmdblookup -f /var/lib/GeoIP/GeoLite2-City.mmdb --ip {ip} location latitude | sed 's/ <double>//'"
+        geo_db = os.getenv("GEO_DB_PATH", "/var/lib/GeoIP/GeoLite2-City.mmdb")
+        lat_cmd = f"mmdblookup -f {geo_db} --ip {ip} location latitude | sed 's/ <double>//'"
         latitude = float(subprocess.check_output(lat_cmd, shell=True, text=True).strip())
     except (subprocess.CalledProcessError, ValueError) as e:
         print(f"Error looking up latitude for IP {ip}: {e}")
         latitude = 0.0
 
     try:
-        lon_cmd = f"mmdblookup -f /var/lib/GeoIP/GeoLite2-City.mmdb --ip {ip} location longitude | sed 's/ <double>//'"
+        geo_db = os.getenv("GEO_DB_PATH", "/var/lib/GeoIP/GeoLite2-City.mmdb")
+        lon_cmd = f"mmdblookup -f {geo_db} --ip {ip} location longitude | sed 's/ <double>//'"
         longitude = float(subprocess.check_output(lon_cmd, shell=True, text=True).strip())
     except (subprocess.CalledProcessError, ValueError) as e:
         print(f"Error looking up longitude for IP {ip}: {e}")

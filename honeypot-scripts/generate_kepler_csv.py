@@ -2,10 +2,14 @@ import re
 import csv
 from datetime import datetime
 import geoip2.database
+import os
+from dotenv import load_dotenv
 
-log_file = "/home/azureuser/cowrie/var/log/cowrie/cowrie.log"
-output_file = "kepler_ready.csv"
-geoip_db = "/usr/share/GeoIP/GeoLite2-City.mmdb"
+load_dotenv()
+
+log_file = os.getenv("COWRIE_LOG_FILE", "/home/azureuser/cowrie/var/log/cowrie/cowrie.log")
+output_file = os.getenv("KEPLER_OUTPUT_CSV", "kepler_ready.csv")
+geoip_db = os.getenv("GEOIP_DB_PATH", "/usr/share/GeoIP/GeoLite2-City.mmdb")
 
 reader = geoip2.database.Reader(geoip_db)
 

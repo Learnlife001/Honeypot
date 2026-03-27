@@ -1,10 +1,14 @@
 import csv
 import geoip2.database
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 ***REMOVED*** Path to your downloaded file from Grafana
-INPUT_CSV = "cowrie_ip_logs.csv"
-OUTPUT_CSV = "kepler_ready.csv"
-GEO_DB = "/usr/share/GeoIP/GeoLite2-City.mmdb"  ***REMOVED*** adjust if yours is different
+INPUT_CSV = os.getenv("GEOIP_INPUT_CSV", "cowrie_ip_logs.csv")
+OUTPUT_CSV = os.getenv("GEOIP_OUTPUT_CSV", "kepler_ready.csv")
+GEO_DB = os.getenv("GEOIP_DB_PATH", "/usr/share/GeoIP/GeoLite2-City.mmdb")  ***REMOVED*** adjust if yours is different
 
 reader = geoip2.database.Reader(GEO_DB)
 

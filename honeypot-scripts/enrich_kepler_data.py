@@ -1,11 +1,15 @@
 import csv
 import geoip2.database
 import pandas as pd
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 ***REMOVED*** Path to input and output CSV
-input_csv = "kepler_ip_only.csv"
-output_csv = "kepler_ready.csv"
-geoip_db = "/usr/share/GeoIP/GeoLite2-City.mmdb"
+input_csv = os.getenv("KEPLER_INPUT_CSV", "kepler_ip_only.csv")
+output_csv = os.getenv("KEPLER_OUTPUT_CSV", "kepler_ready.csv")
+geoip_db = os.getenv("GEOIP_DB_PATH", "/usr/share/GeoIP/GeoLite2-City.mmdb")
 
 ***REMOVED*** Load the IP-only data
 df = pd.read_csv(input_csv)
