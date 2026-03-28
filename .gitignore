@@ -53,4 +53,3 @@ honeypot-web/alerts.db
 honeypot-scripts/last_position.txt
 honeypot-web/static/attack_map.html
 honeypot-web/reports/*.json
-
