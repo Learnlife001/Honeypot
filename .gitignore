@@ -6,7 +6,6 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-
 venv/
 env/
 .venv/
@@ -25,7 +24,7 @@ alerts.db
 *.csv
 
 *.mmdb
-
+geo_env/
 cowrie.log
 cowrie.json
 attack_map.html
@@ -46,8 +45,12 @@ Thumbs.db
 node_modules/
 .next/
 out/
-
 honeypot-web/static/attack_map.html
 honeypot-scripts/new_ips.csv
 honeypot-scripts/attack_ips_geo.csv
 last_position.txt
+honeypot-web/alerts.db
+honeypot-scripts/last_position.txt
+honeypot-web/static/attack_map.html
+honeypot-web/reports/*.json
+
