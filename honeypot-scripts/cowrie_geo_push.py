@@ -17,6 +17,8 @@ load_dotenv()
 LOKI_URL = os.getenv("LOKI_URL", "http://localhost:3100/loki/api/v1/push")
 LOG_FILE = os.getenv("LOG_FILE", "/home/azureuser/cowrie/var/log/cowrie/cowrie.log")
 GEO_DB_PATH = os.getenv("GEO_DB_PATH", "/var/lib/GeoIP/GeoLite2-City.mmdb")
+# Feature 1: GeoLite2 ASN DB path (optional; enrichment skipped if missing)
+GEO_ASN_PATH = os.getenv("GEO_ASN_PATH", "/usr/share/GeoIP/GeoLite2-ASN.mmdb")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 LOG_ALERT_FILE = os.getenv("LOG_ALERT_FILE", "/home/azureuser/telegram_alert_log.txt")
@@ -80,26 +82,222 @@ def init_db():
     for stmt in (
         "ALTER TABLE alerts ADD COLUMN latitude REAL",
         "ALTER TABLE alerts ADD COLUMN longitude REAL",
+        "ALTER TABLE alerts ADD COLUMN asn TEXT",
+        "ALTER TABLE alerts ADD COLUMN org TEXT",
+        "ALTER TABLE alerts ADD COLUMN severity TEXT",
+        "ALTER TABLE alerts ADD COLUMN client_version TEXT",
+        "ALTER TABLE alerts ADD COLUMN hassh TEXT",
     ):
         try:
             conn.execute(stmt)
         except sqlite3.OperationalError:
             pass
+
+    # Indexes: speed ip + time-window lookups (severity, brute-force, aggregations) and time-ordered reads
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_alerts_ip_timestamp
+            ON alerts(ip, timestamp)
+            """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_alerts_timestamp
+            ON alerts(timestamp)
+            """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_alerts_username
+            ON alerts(username)
+            """
+        )
+    except sqlite3.OperationalError:
+        pass
+
     conn.commit()
     conn.close()
 
 
-def insert_alert(ip, country, city, username, password, timestamp, latitude=None, longitude=None):
-    conn = get_db_connection()
+def resolve_asn(ip, asn_reader):
+    """Feature 1: ASN + org from GeoLite2-ASN; NULL on failure or missing reader."""
+    if asn_reader is None:
+        return None, None
+    try:
+        res = asn_reader.asn(ip)
+        num = res.autonomous_system_number
+        org = res.autonomous_system_organization
+        asn_str = str(num) if num is not None else None
+        return asn_str, org
+    except Exception:
+        return None, None
+
+
+def ipv4_subnet24_prefix(ip):
+    parts = ip.split(".")
+    if len(parts) != 4:
+        return None
+    return ".".join(parts[:3]) + "."
+
+
+def classify_severity(conn, ip, event_ts, username):
+    """
+    Feature 2: severity tiers (highest matching wins).
+    Order: critical > high > medium > low.
+    """
+    # critical: multiple distinct IPs in same /24 within 60 seconds
+    prefix = ipv4_subnet24_prefix(ip)
+    if prefix:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT ip FROM alerts
+            WHERE ip LIKE ? AND datetime(timestamp) >= datetime(?, '-60 seconds')
+            """,
+            (prefix + "%", event_ts),
+        ).fetchall()
+        existing_ips = {r[0] for r in rows}
+        if len(existing_ips) >= 2:
+            return "critical"
+        if len(existing_ips) == 1 and ip not in existing_ips:
+            return "critical"
+
+    # high: credential spraying (3+ distinct non-placeholder usernames / 10 min)
+    row = conn.execute(
+        """
+        SELECT COUNT(DISTINCT username) FROM alerts
+        WHERE ip = ? AND datetime(timestamp) >= datetime(?, '-10 minutes')
+          AND username IS NOT NULL AND TRIM(username) != ''
+          AND username NOT IN ('Unknown')
+        """,
+        (ip, event_ts),
+    ).fetchone()
+    spray_existing = row[0] if row else 0
+    spray_usernames = spray_existing
+    if username and username not in ("Unknown", "") and username.strip():
+        row2 = conn.execute(
+            """
+            SELECT 1 FROM alerts
+            WHERE ip = ? AND datetime(timestamp) >= datetime(?, '-10 minutes')
+              AND username = ?
+            LIMIT 1
+            """,
+            (ip, event_ts, username),
+        ).fetchone()
+        if not row2:
+            spray_usernames = spray_existing + 1
+    if spray_usernames >= 3:
+        return "high"
+
+    row = conn.execute(
+        """
+        SELECT COUNT(*) FROM alerts
+        WHERE ip = ? AND datetime(timestamp) >= datetime(?, '-2 minutes')
+        """,
+        (ip, event_ts),
+    ).fetchone()
+    if row and row[0] >= 2:
+        return "medium"
+
+    return "low"
+
+
+def detect_bruteforce(conn, ip, event_ts):
+    """Feature 4: same IP, 5+ attempts within 60 seconds (including this event)."""
+    row = conn.execute(
+        """
+        SELECT COUNT(*) FROM alerts
+        WHERE ip = ? AND datetime(timestamp) >= datetime(?, '-60 seconds')
+        """,
+        (ip, event_ts),
+    ).fetchone()
+    prior = row[0] if row else 0
+    if prior + 1 >= 5:
+        print(f"[BRUTEFORCE DETECTED] IP: {ip}")
+        send_telegram_alert(ip)
+
+
+def send_telegram_alert(ip):
+    """Feature 4: optional single-IP alert hook (no Telegram dependency)."""
+    # Placeholder for future wiring to TELEGRAM_BOT_TOKEN / CHAT_ID
+    _ = ip
+
+
+def collect_bot_fingerprints(lines):
+    """
+    Feature 5: derive hassh + SSH client banner per IP from sequential Cowrie lines
+    following each New connection (best-effort; NULL if not seen in batch).
+    """
+    meta = {}
+    current_ip = None
+    for line in lines:
+        m = re.search(r"New connection: (\d+\.\d+\.\d+\.\d+)", line)
+        if m:
+            current_ip = m.group(1)
+            continue
+        if not current_ip:
+            continue
+        hm = re.search(r"hassh[=:]\s*([a-fA-F0-9]{32})", line, re.I)
+        if hm:
+            meta.setdefault(current_ip, {})["hassh"] = hm.group(1)
+        vm = re.search(
+            r"(?:Remote SSH version|remote version|SSH client version|client version)[:=]\s*(SSH-2\.0[-\w\.]+)",
+            line,
+            re.I,
+        )
+        if vm:
+            meta.setdefault(current_ip, {})["client_version"] = vm.group(1)
+    return meta
+
+
+def insert_alert(
+    ip,
+    country,
+    city,
+    username,
+    password,
+    timestamp,
+    latitude=None,
+    longitude=None,
+    asn=None,
+    org=None,
+    severity=None,
+    client_version=None,
+    hassh=None,
+    conn=None,
+):
+    own = conn is None
+    if own:
+        conn = get_db_connection()
     conn.execute(
         """
-        INSERT INTO alerts (ip, country, city, username, password, timestamp, latitude, longitude)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO alerts (
+            ip, country, city, username, password, timestamp,
+            latitude, longitude, asn, org, severity, client_version, hassh
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (ip, country, city, username, password, timestamp, latitude, longitude),
+        (
+            ip,
+            country,
+            city,
+            username,
+            password,
+            timestamp,
+            latitude,
+            longitude,
+            asn,
+            org,
+            severity,
+            client_version,
+            hassh,
+        ),
     )
-    conn.commit()
-    conn.close()
+    if own:
+        conn.commit()
+        conn.close()
+
 
 def resolve_geo(ip, reader):
     try:
@@ -109,8 +307,9 @@ def resolve_geo(ip, reader):
         lat = res.location.latitude
         lon = res.location.longitude
         return city, country, lat, lon
-    except:
+    except Exception:
         return None, None, None, None
+
 
 def send_telegram_batch_alert(entries):
     max_length = 4000
@@ -125,6 +324,7 @@ def send_telegram_batch_alert(entries):
             message += part
     if message.strip() != header.strip():
         post_telegram(message)
+
 
 def post_telegram(text):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
@@ -144,6 +344,7 @@ def post_telegram(text):
     except Exception as e:
         print(f"❌ Telegram exception: {e}")
 
+
 def send_email_batch_alert(entries):
     if not EMAIL_USER or not EMAIL_PASS or not EMAIL_TO:
         print("❌ Email credentials missing (EMAIL_USER / EMAIL_PASS / EMAIL_TO).")
@@ -161,6 +362,7 @@ def send_email_batch_alert(entries):
         print("✔️ Email alert sent.")
     except Exception as e:
         print(f"❌ Email error: {e}")
+
 
 def process_logs():
     init_db()
@@ -181,56 +383,82 @@ def process_logs():
         lines = f.readlines()
         save_last_position(f.tell())
 
-    with geoip2.database.Reader(GEO_DB_PATH) as reader:
-        for line in lines:
-            if "New connection" not in line:
-                continue
-            match = re.search(r"New connection: (\d+\.\d+\.\d+\.\d+)", line)
-            if not match:
-                continue
-            ip = match.group(1)
-            if ip in alerted_ips or ip in seen_ips:
-                continue
-            seen_ips.add(ip)
-            city, country, lat, lon = resolve_geo(ip, reader)
-            if lat is None or lon is None:
-                continue
-            event_timestamp = datetime.now(timezone.utc).isoformat()
-            username = "Unknown"
-            password = "Unknown"
-            timestamp_ns = str(int(time.time() * 1e9))
-            structured_log = json.dumps({
-                "ip": ip,
-                "city": city,
-                "country": country,
-                "lat": lat,
-                "lon": lon,
-                "timestamp": event_timestamp
-            })
-            payload = {
-                "streams": [
-                    {
-                        "stream": {"job": "cowrie_enriched"},
-                        "values": [[timestamp_ns, structured_log]]
+    ip_bot_meta = collect_bot_fingerprints(lines)
+
+    asn_reader = None
+    try:
+        if os.path.isfile(GEO_ASN_PATH):
+            asn_reader = geoip2.database.Reader(GEO_ASN_PATH)
+
+        with geoip2.database.Reader(GEO_DB_PATH) as reader:
+            conn = get_db_connection()
+            try:
+                for line in lines:
+                    if "New connection" not in line:
+                        continue
+                    match = re.search(r"New connection: (\d+\.\d+\.\d+\.\d+)", line)
+                    if not match:
+                        continue
+                    ip = match.group(1)
+                    if ip in alerted_ips or ip in seen_ips:
+                        continue
+                    seen_ips.add(ip)
+                    city, country, lat, lon = resolve_geo(ip, reader)
+                    if lat is None or lon is None:
+                        continue
+                    event_timestamp = datetime.now(timezone.utc).isoformat()
+                    username = "Unknown"
+                    password = "Unknown"
+                    bot = ip_bot_meta.get(ip, {})
+                    client_version = bot.get("client_version")
+                    hassh = bot.get("hassh")
+                    asn, org = resolve_asn(ip, asn_reader)
+                    severity = classify_severity(conn, ip, event_timestamp, username)
+                    detect_bruteforce(conn, ip, event_timestamp)
+
+                    timestamp_ns = str(int(time.time() * 1e9))
+                    structured_log = json.dumps({
+                        "ip": ip,
+                        "city": city,
+                        "country": country,
+                        "lat": lat,
+                        "lon": lon,
+                        "timestamp": event_timestamp
+                    })
+                    payload = {
+                        "streams": [
+                            {
+                                "stream": {"job": "cowrie_enriched"},
+                                "values": [[timestamp_ns, structured_log]]
+                            }
+                        ]
                     }
-                ]
-            }
-            requests.post(LOKI_URL, json=payload)
-            new_alerts.append({
-                "ip": ip, "city": city, "country": country,
-                "lat": lat, "lon": lon,
-                "username": username,
-                "password": password,
-                "timestamp": event_timestamp
-            })
-            insert_alert(ip, country, city, username, password, event_timestamp, lat, lon)
-            with open(LOG_ALERT_FILE, "a", encoding="utf-8") as logf:
-                logf.write(f"{ip},{city},{country},{event_timestamp}\n")
+                    requests.post(LOKI_URL, json=payload)
+                    new_alerts.append({
+                        "ip": ip, "city": city, "country": country,
+                        "lat": lat, "lon": lon,
+                        "username": username,
+                        "password": password,
+                        "timestamp": event_timestamp
+                    })
+                    insert_alert(
+                        ip, country, city, username, password, event_timestamp,
+                        lat, lon, asn, org, severity, client_version, hassh, conn=conn,
+                    )
+                    conn.commit()
+                    with open(LOG_ALERT_FILE, "a", encoding="utf-8") as logf:
+                        logf.write(f"{ip},{city},{country},{event_timestamp}\n")
+
+            finally:
+                conn.close()
+    finally:
+        if asn_reader is not None:
+            asn_reader.close()
 
     if new_alerts:
         send_telegram_batch_alert(new_alerts)
         send_email_batch_alert(new_alerts)
 
+
 if __name__ == "__main__":
     process_logs()
-

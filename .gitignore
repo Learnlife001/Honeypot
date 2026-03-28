@@ -1,7 +1,7 @@
 .env
 .env.*
 !.env.example
-
+.env.example
 __pycache__/
 *.pyc
 *.pyo
@@ -50,3 +50,4 @@ out/
 honeypot-web/static/attack_map.html
 honeypot-scripts/new_ips.csv
 honeypot-scripts/attack_ips_geo.csv
+last_position.txt
