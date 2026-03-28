@@ -336,18 +336,21 @@
         const passwordValues = Object.values(stats.password_counts || {});
         const counter = document.getElementById("attackCounter");
         counter.textContent = stats.total_attacks || 0;
+
 	      const recent = stats.attacks_last_5_minutes || 0;
 
-        const velocityElement = document.getElementById("attacksLast5Minutes");
-        velocityElement.textContent = recent;
-
+        const velocityValue = document.getElementById("attacksLast5Minutes");
+        const velocityPanel = document.getElementById("velocityPanel");
+        velocityValue.textContent = recent;
         if (recent < 5) {
-        velocityElement.className = "fw-bold text-success";
-        } else if (recent < 15) {
-          velocityElement.className = "fw-bold text-warning";
-} else {
-    velocityElement.className = "fw-bold text-danger";
-}
+            velocityPanel.style.backgroundColor = "#0f2e1c";
+        }
+        else if (recent < 15) {
+            velocityPanel.style.backgroundColor = "#3a2f0f";
+        }
+        else {
+            velocityPanel.style.backgroundColor = "#3a0f0f";
+        }
 
         if (!countriesChart) {
           countriesChart = createBarChart(
