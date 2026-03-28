@@ -135,6 +135,7 @@
   </div>
 
   <script>
+    document.addEventListener("DOMContentLoaded", function() {
     let countriesChart;
     let ipsChart;
     let usersChart;
@@ -453,6 +454,7 @@
     setInterval(fetchStats, 10000);
     setInterval(fetchTimeline, 10000);
     setInterval(fetchTimelineRegions, 10000);
+    });
   </script>
 </body>
 </html>
