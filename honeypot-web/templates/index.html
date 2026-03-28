@@ -95,7 +95,7 @@
       </div>
     </div>
 
-    <!-- Row 1: live feed | attack map | attack frequency timeline -->
+    <!-- Row 1 header: live feed | attack map (map + replay unchanged) -->
     <div class="row g-3">
       <div class="col-lg-3">
         <div class="panel h-100">
@@ -115,7 +115,7 @@
           </ul>
         </div>
       </div>
-      <div class="col-lg-5">
+      <div class="col-lg-9">
         <div class="panel h-100 d-flex flex-column">
           <h5 class="mb-2">Attack Map</h5>
           <iframe src="/map" class="map-iframe w-100 flex-shrink-0" title="Attack Map"></iframe>
@@ -138,7 +138,11 @@
           </div>
         </div>
       </div>
-      <div class="col-lg-4">
+    </div>
+
+    <!-- Attack frequency timeline (full width, below header) -->
+    <div class="row g-3">
+      <div class="col-12">
         <div class="panel h-100">
           <h5 class="mb-2">Attack Frequency Timeline (Last 24h)</h5>
           <div class="timeline-wrapper mb-0"><canvas id="timelineChart"></canvas></div>
@@ -146,7 +150,7 @@
       </div>
     </div>
 
-    <!-- Row 2: countries | infrastructure | severity -->
+    <!-- Intelligence row 1: countries | infrastructure | severity -->
     <div class="row g-3">
       <div class="col-lg-4">
         <div class="panel h-100">
@@ -168,7 +172,7 @@
       </div>
     </div>
 
-    <!-- Row 3: subnets | IPs | top attackers (5 min) -->
+    <!-- Intelligence row 2: subnets | IPs | top attackers (5 min) -->
     <div class="row g-3">
       <div class="col-lg-4">
         <div class="panel h-100">
@@ -192,7 +196,7 @@
       </div>
     </div>
 
-    <!-- Row 4: usernames | passwords | SSH clients | HASSH -->
+    <!-- Intelligence row 3: usernames | passwords | SSH clients | HASSH -->
     <div class="row g-3">
       <div class="col-lg-3">
         <div class="panel h-100">
