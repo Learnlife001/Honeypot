@@ -64,15 +64,9 @@
       <div class="col-12">
         <div class="panel d-flex justify-content-between align-items-center">
           <h3 class="mb-0">Real-Time Honeypot SOC Dashboard</h3>
-          <div class="d-flex gap-4 align-items-center">
-            <div>
-              Total attacks detected:
-              <span id="attackCounter" class="fw-bold text-warning">0</span>
-            </div>
-            <div>
-              Attacks last 5 minutes:
-              <span id="attacksLast5Minutes" class="fw-bold text-info">0</span>
-            </div>
+          <div class="fs-5">
+            Total attacks detected:
+            <span id="attackCounter" class="fw-bold text-warning">0</span>
           </div>
         </div>
       </div>
@@ -336,18 +330,8 @@
         const passwordValues = Object.values(stats.password_counts || {});
         const counter = document.getElementById("attackCounter");
         counter.textContent = stats.total_attacks || 0;
-	      const recent = stats.attacks_last_5_minutes || 0;
-
-        const velocityElement = document.getElementById("attacksLast5Minutes");
-        velocityElement.textContent = recent;
-
-        if (recent < 5) {
-        velocityElement.className = "fw-bold text-success";
-        } else if (recent < 15) {
-          velocityElement.className = "fw-bold text-warning";
-} else {
-    velocityElement.className = "fw-bold text-danger";
-}
+	      document.getElementById("attacksLast5Minutes").textContent =
+	          stats.attacks_last_5_minutes || 0;
 
         if (!countriesChart) {
           countriesChart = createBarChart(

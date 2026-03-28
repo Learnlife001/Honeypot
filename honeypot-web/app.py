@@ -123,7 +123,19 @@ def get_top_counts(column_name, limit=10):
 
 def get_attack_statistics():
     conn = get_db_connection()
-    total_row = conn.execute("SELECT COUNT(*) AS total FROM alerts").fetchone()
+    cursor = conn.cursor()
+
+    total_row = cursor.execute(
+        "SELECT COUNT(*) AS total FROM alerts"
+    ).fetchone()
+
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM alerts
+        WHERE timestamp >= datetime('now', '-5 minutes')
+    """)
+    attacks_last_5_minutes = cursor.fetchone()[0]
+
     conn.close()
 
     return {
@@ -132,6 +144,7 @@ def get_attack_statistics():
         "username_counts": get_top_counts("username", 10),
         "password_counts": get_top_counts("password", 10),
         "total_attacks": total_row["total"] if total_row else 0,
+        "attacks_last_5_minutes": attacks_last_5_minutes
     }
 
 
