@@ -56,6 +56,20 @@
       height: 170px;
       margin-top: 0.5rem;
     }
+    .velocity-sparkline-wrap {
+      width: 200px;
+      height: 40px;
+      flex-shrink: 0;
+    }
+    .severity-pie-wrapper {
+      height: 220px;
+      margin-bottom: 1rem;
+    }
+    .leaderboard-feed {
+      max-height: 220px;
+      overflow-y: auto;
+      font-size: 0.9rem;
+    }
   </style>
 </head>
 <body>
@@ -65,12 +79,14 @@
         <div class="panel d-flex justify-content-between align-items-center">
           <h3 class="mb-0">Real-Time Honeypot SOC Dashboard</h3>
         
-          <div class="d-flex gap-4 align-items-center">
+          <div class="d-flex gap-4 align-items-center flex-wrap justify-content-end">
             <div>
               Total attacks detected:
               <span id="attackCounter" class="fw-bold text-warning">0</span>
             </div>
-        
+            <div class="velocity-sparkline-wrap">
+              <canvas id="velocitySparkline" aria-label="Attack velocity last 30 minutes"></canvas>
+            </div>
             <div id="velocityPanel" class="px-3 py-1 rounded">
               Attacks last 5 minutes:
               <span id="attacksLast5Minutes" class="fw-bold">0</span>
@@ -96,6 +112,10 @@
             {% else %}
               <li class="list-group-item">No alerts available.</li>
             {% endfor %}
+          </ul>
+          <h5 class="mt-3">Top Attackers Last 5 Minutes</h5>
+          <ul id="activeAttackersList" class="list-group leaderboard-feed">
+            <li class="list-group-item">Loading…</li>
           </ul>
         </div>
       </div>
@@ -125,12 +145,22 @@
           <div class="timeline-wrapper"><canvas id="timelineChart"></canvas></div>
           <h5>Top Attacking Countries</h5>
           <div class="chart-wrapper"><canvas id="countriesChart"></canvas></div>
+          <h5>Top Attacking Infrastructure Providers</h5>
+          <div class="chart-wrapper"><canvas id="asnChart"></canvas></div>
+          <h5>Attack Severity Distribution</h5>
+          <div class="severity-pie-wrapper"><canvas id="severityChart"></canvas></div>
+          <h5>Top Attacking Subnets</h5>
+          <div class="chart-wrapper"><canvas id="subnetChart"></canvas></div>
           <h5>Top Attacking IP Addresses</h5>
           <div class="chart-wrapper"><canvas id="ipsChart"></canvas></div>
           <h5>Recent Credential Attempts (Usernames)</h5>
           <div class="chart-wrapper"><canvas id="usersChart"></canvas></div>
           <h5>Top attempted passwords</h5>
           <div class="chart-wrapper"><canvas id="passwordsChart"></canvas></div>
+          <h5>Top SSH Client Fingerprints</h5>
+          <div class="chart-wrapper"><canvas id="fingerprintChart"></canvas></div>
+          <h5>Top HASSH Fingerprints</h5>
+          <div class="chart-wrapper"><canvas id="hasshChart"></canvas></div>
         </div>
       </div>
     </div>
@@ -139,6 +169,12 @@
   <script>
     document.addEventListener("DOMContentLoaded", function() {
     let countriesChart;
+    let asnChart;
+    let subnetChart;
+    let fingerprintChart;
+    let hasshChart;
+    let severityChart;
+    let velocitySparkline;
     let ipsChart;
     let usersChart;
     let passwordsChart;
@@ -180,6 +216,78 @@
     }
 
     function updateChart(chart, labels, values) {
+      chart.data.labels = labels;
+      chart.data.datasets[0].data = values;
+      chart.update();
+    }
+
+    function createSeverityPieChart(ctx, severityCounts) {
+      const order = ["low", "medium", "high", "critical"];
+      const colors = ["#22c55e", "#eab308", "#f97316", "#ef4444"];
+      const labels = order;
+      const data = order.map((k) => (severityCounts && severityCounts[k]) || 0);
+      return new Chart(ctx, {
+        type: "pie",
+        data: {
+          labels,
+          datasets: [{
+            data,
+            backgroundColor: colors
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: "bottom",
+              labels: { color: "#dbe6ff", boxWidth: 12 }
+            }
+          }
+        }
+      });
+    }
+
+    function updateSeverityPieChart(chart, severityCounts) {
+      const order = ["low", "medium", "high", "critical"];
+      const colors = ["#22c55e", "#eab308", "#f97316", "#ef4444"];
+      chart.data.labels = order;
+      chart.data.datasets[0].data = order.map((k) => (severityCounts && severityCounts[k]) || 0);
+      chart.data.datasets[0].backgroundColor = colors;
+      chart.update();
+    }
+
+    function createVelocitySparkline(ctx, series) {
+      const labels = (series || []).map((p) => p.t || "");
+      const values = (series || []).map((p) => p.count || 0);
+      return new Chart(ctx, {
+        type: "line",
+        data: {
+          labels,
+          datasets: [{
+            data: values,
+            borderColor: "rgba(255, 206, 86, 0.95)",
+            borderWidth: 1.5,
+            tension: 0.25,
+            pointRadius: 0,
+            fill: false
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { display: false },
+            y: { display: false }
+          }
+        }
+      });
+    }
+
+    function updateVelocitySparkline(chart, series) {
+      const labels = (series || []).map((p) => p.t || "");
+      const values = (series || []).map((p) => p.count || 0);
       chart.data.labels = labels;
       chart.data.datasets[0].data = values;
       chart.update();
@@ -331,12 +439,22 @@
 
         const countryLabels = Object.keys(stats.country_counts || {});
         const countryValues = Object.values(stats.country_counts || {});
+        const asnLabels = Object.keys(stats.asn_counts || {});
+        const asnValues = Object.values(stats.asn_counts || {});
         const ipLabels = Object.keys(stats.ip_counts || {});
         const ipValues = Object.values(stats.ip_counts || {});
         const userLabels = Object.keys(stats.username_counts || {});
         const userValues = Object.values(stats.username_counts || {});
         const passwordLabels = Object.keys(stats.password_counts || {});
         const passwordValues = Object.values(stats.password_counts || {});
+        const subnetLabels = Object.keys(stats.subnet_counts || {});
+        const subnetValues = Object.values(stats.subnet_counts || {});
+        const fpLabels = Object.keys(stats.client_fingerprint_counts || {});
+        const fpValues = Object.values(stats.client_fingerprint_counts || {});
+        const hasshLabels = Object.keys(stats.hassh_counts || {});
+        const hasshValues = Object.values(stats.hassh_counts || {});
+        const velocitySeries = stats.velocity_series || [];
+
         const counter = document.getElementById("attackCounter");
         counter.textContent = stats.total_attacks || 0;
 
@@ -363,6 +481,24 @@
             countryValues,
             "rgba(54, 162, 235, 0.7)"
           );
+          asnChart = createBarChart(
+            document.getElementById("asnChart"),
+            "Infrastructure Providers",
+            asnLabels,
+            asnValues,
+            "rgba(255, 206, 86, 0.7)"
+          );
+          severityChart = createSeverityPieChart(
+            document.getElementById("severityChart"),
+            stats.severity_counts || {}
+          );
+          subnetChart = createBarChart(
+            document.getElementById("subnetChart"),
+            "Subnets",
+            subnetLabels,
+            subnetValues,
+            "rgba(54, 162, 235, 0.7)"
+          );
           ipsChart = createBarChart(
             document.getElementById("ipsChart"),
             "IPs",
@@ -384,14 +520,57 @@
             passwordValues,
             "rgba(255, 159, 64, 0.8)"
           );
+          fingerprintChart = createBarChart(
+            document.getElementById("fingerprintChart"),
+            "SSH clients",
+            fpLabels,
+            fpValues,
+            "rgba(129, 199, 132, 0.75)"
+          );
+          hasshChart = createBarChart(
+            document.getElementById("hasshChart"),
+            "HASSH",
+            hasshLabels,
+            hasshValues,
+            "rgba(100, 181, 246, 0.75)"
+          );
+          velocitySparkline = createVelocitySparkline(
+            document.getElementById("velocitySparkline"),
+            velocitySeries
+          );
         } else {
           updateChart(countriesChart, countryLabels, countryValues);
+          updateChart(asnChart, asnLabels, asnValues);
+          updateSeverityPieChart(severityChart, stats.severity_counts || {});
+          updateChart(subnetChart, subnetLabels, subnetValues);
           updateChart(ipsChart, ipLabels, ipValues);
           updateChart(usersChart, userLabels, userValues);
           updateChart(passwordsChart, passwordLabels, passwordValues);
+          updateChart(fingerprintChart, fpLabels, fpValues);
+          updateChart(hasshChart, hasshLabels, hasshValues);
+          updateVelocitySparkline(velocitySparkline, velocitySeries);
         }
       } catch (error) {
         console.error("Failed to fetch stats:", error);
+      }
+    }
+
+    async function fetchActiveAttackers() {
+      try {
+        const response = await fetch("/active-attackers");
+        const rows = await response.json();
+        const el = document.getElementById("activeAttackersList");
+        if (!rows.length) {
+          el.innerHTML = '<li class="list-group-item">No recent activity.</li>';
+          return;
+        }
+        el.innerHTML = rows.map((row) => {
+          const ip = row.ip || "—";
+          const n = row.attempts != null ? row.attempts : 0;
+          return `<li class="list-group-item d-flex justify-content-between align-items-center"><span>${ip}</span><span class="text-warning fw-bold">${n}</span></li>`;
+        }).join("");
+      } catch (error) {
+        console.error("Failed to fetch active attackers:", error);
       }
     }
 
@@ -449,11 +628,13 @@
 
     fetchAlerts();
     fetchStats();
+    fetchActiveAttackers();
     fetchTimeline();
     fetchTimelineRegions();
 
     setInterval(fetchAlerts, 5000);
     setInterval(fetchStats, 10000);
+    setInterval(fetchActiveAttackers, 10000);
     setInterval(fetchTimeline, 10000);
     setInterval(fetchTimelineRegions, 10000);
     });

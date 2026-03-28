@@ -1,4 +1,5 @@
 from flask import Flask, jsonify, render_template, send_from_directory
+import json
 import os
 import sqlite3
 import subprocess
@@ -54,6 +55,23 @@ def start_scheduler():
         trigger="date",
         run_date=datetime.now(),
         id="update_attack_map_startup",
+        replace_existing=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        run_daily_report_export,
+        trigger="interval",
+        hours=24,
+        id="daily_report_export_job",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    scheduler.add_job(
+        run_daily_report_export,
+        trigger="date",
+        run_date=datetime.now(),
+        id="daily_report_export_startup",
         replace_existing=True,
         max_instances=1,
     )
@@ -188,6 +206,124 @@ def get_severity_counts(hours=None):
     return base
 
 
+def get_asn_org_counts(limit=10):
+    """Top infrastructure providers: group by ASN org (rows with NULL org excluded)."""
+    conn = get_db_connection()
+    rows = conn.execute(
+        """
+        SELECT org, COUNT(*) AS count
+        FROM alerts
+        WHERE org IS NOT NULL
+        GROUP BY org
+        ORDER BY count DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return {row["org"]: row["count"] for row in rows}
+
+
+def get_top_subnets(limit=10):
+    """
+    IPv4 /24 burst view. SQLite has no instr(hay, needle, n); use nested substr/instr
+    to find the third dot, then label as x.y.z.0/24.
+    """
+    conn = get_db_connection()
+    rows = conn.execute(
+        """
+        SELECT
+            substr(ip, 1,
+              instr(ip, '.')
+              + instr(substr(ip, instr(ip, '.') + 1), '.')
+              + instr(substr(ip, instr(ip, '.') + instr(substr(ip, instr(ip, '.') + 1), '.') + 1), '.')
+              - 1
+            ) || '.0/24' AS subnet,
+            COUNT(*) AS count
+        FROM alerts
+        WHERE ip IS NOT NULL
+          AND ip LIKE '%.%.%.%'
+        GROUP BY subnet
+        HAVING length(subnet) > 0
+        ORDER BY count DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return {row["subnet"]: row["count"] for row in rows}
+
+
+def get_client_version_counts(limit=10):
+    """Bot fingerprint: SSH client banner strings."""
+    conn = get_db_connection()
+    rows = conn.execute(
+        """
+        SELECT client_version, COUNT(*) AS count
+        FROM alerts
+        WHERE client_version IS NOT NULL
+        GROUP BY client_version
+        ORDER BY count DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return {row["client_version"]: row["count"] for row in rows}
+
+
+def get_hassh_counts(limit=10):
+    """Bot fingerprint: hassh clustering."""
+    conn = get_db_connection()
+    rows = conn.execute(
+        """
+        SELECT hassh, COUNT(*) AS count
+        FROM alerts
+        WHERE hassh IS NOT NULL
+        GROUP BY hassh
+        ORDER BY count DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return {row["hassh"]: row["count"] for row in rows}
+
+
+def get_attack_velocity_series(minutes=30):
+    """Rolling per-minute bucket counts for sparkline (label = time of day)."""
+    conn = get_db_connection()
+    rows = conn.execute(
+        """
+        SELECT strftime('%H:%M', timestamp) AS t, COUNT(*) AS count
+        FROM alerts
+        WHERE datetime(timestamp) >= datetime('now', ?)
+        GROUP BY t
+        ORDER BY t
+        """,
+        (f"-{minutes} minutes",),
+    ).fetchall()
+    conn.close()
+    return [{"t": row["t"], "count": row["count"]} for row in rows]
+
+
+def write_daily_report_file(payload=None):
+    """Persist latest daily intelligence JSON for offline / SIEM use."""
+    data = payload if payload is not None else get_daily_report()
+    report_dir = os.path.join(BASE_DIR, "reports")
+    os.makedirs(report_dir, exist_ok=True)
+    path = os.path.join(report_dir, "daily_report.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+
+def run_daily_report_export():
+    try:
+        write_daily_report_file()
+    except OSError as exc:
+        print(f"daily report file export failed: {exc}")
+
+
 def get_attack_statistics():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -213,6 +349,11 @@ def get_attack_statistics():
         "total_attacks": total_row["total"] if total_row else 0,
         "attacks_last_5_minutes": attacks_last_5_minutes,
         "severity_counts": get_severity_counts(),
+        "asn_counts": get_asn_org_counts(10),
+        "subnet_counts": get_top_subnets(10),
+        "client_fingerprint_counts": get_client_version_counts(10),
+        "hassh_counts": get_hassh_counts(10),
+        "velocity_series": get_attack_velocity_series(30),
     }
 
 
@@ -334,7 +475,12 @@ def active_attackers():
 
 @app.route("/report/daily")
 def report_daily():
-    return jsonify(get_daily_report())
+    data = get_daily_report()
+    try:
+        write_daily_report_file(data)
+    except OSError:
+        pass
+    return jsonify(data)
 
 
 if __name__ == "__main__":
