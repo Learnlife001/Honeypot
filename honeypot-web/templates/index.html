@@ -498,14 +498,17 @@
           return;
         }
 
-        alertsList.innerHTML = alerts.map((alert) => {
-          const ip = alert.ip || "Unknown";
-          const country = alert.country || "Unknown";
-          const city = alert.city || "Unknown";
-          const user = alert.username || "";
-          const userChunk = user ? ` | user: ${user}` : "";
-          return `<li class="list-group-item"><strong>${ip}</strong> - ${country}, ${city}${userChunk}</li>`;
-        }).join("");
+        alertsList.replaceChildren(...alerts.map((alert) => {
+          const item = document.createElement("li");
+          item.className = "list-group-item";
+          const ip = document.createElement("strong");
+          ip.textContent = alert.ip || "Unknown";
+          item.append(ip, document.createTextNode(` - ${alert.country || "Unknown"}, ${alert.city || "Unknown"}`));
+          if (alert.username) {
+            item.append(document.createTextNode(` | user: ${alert.username}`));
+          }
+          return item;
+        }));
       } catch (error) {
         console.error("Failed to fetch alerts:", error);
       }

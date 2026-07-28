@@ -6,18 +6,18 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-***REMOVED*** Path to input and output CSV
+# Paths to input, output, and GeoIP data.
 input_csv = os.getenv("KEPLER_INPUT_CSV", "kepler_ip_only.csv")
 output_csv = os.getenv("KEPLER_OUTPUT_CSV", "kepler_ready.csv")
 geoip_db = os.getenv("GEOIP_DB_PATH", "/usr/share/GeoIP/GeoLite2-City.mmdb")
 
-***REMOVED*** Load the IP-only data
+# Load the IP-only data.
 df = pd.read_csv(input_csv)
 
-***REMOVED*** Open the GeoIP database
+# Open the GeoIP database.
 reader = geoip2.database.Reader(geoip_db)
 
-***REMOVED*** Create output file and write header
+# Create output file and write header.
 with open(output_csv, "w", newline="") as out:
     writer = csv.writer(out)
     writer.writerow(["ip", "timestamp", "latitude", "longitude"])
