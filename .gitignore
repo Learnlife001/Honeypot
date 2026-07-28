@@ -16,6 +16,8 @@ telegram_alert_log.txt
 
 *.sqlite3
 *.db
+*.db-shm
+*.db-wal
 alerts.db
 *.pem
 *.key
@@ -43,6 +45,7 @@ dist/
 Thumbs.db
 
 node_modules/
+.vercel/
 .next/
 out/
 honeypot-web/static/attack_map.html
