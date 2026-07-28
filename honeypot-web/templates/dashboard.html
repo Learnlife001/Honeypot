@@ -31,7 +31,7 @@
     }
 
     a { color: var(--text); }
-    .wrap { max-width: 1300px; margin: 0 auto; padding: 18px; }
+    .wrap { max-width: 1440px; margin: 0 auto; padding: 26px 20px 40px; }
     .topbar {
       display: flex; align-items: center; justify-content: space-between;
       gap: 12px; margin-bottom: 14px;
@@ -65,6 +65,16 @@
       box-shadow: 0 10px 30px rgba(0,0,0,0.25);
       overflow: hidden;
     }
+    .panel.live-panel { border-color: rgba(124,58,237,0.48); }
+    .eyebrow { color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: 0.13em; text-transform: uppercase; }
+    .map-shell { position: relative; }
+    .map-status {
+      position: absolute; z-index: 500; top: 24px; left: 24px;
+      background: rgba(9, 13, 30, 0.88); border: 1px solid var(--border);
+      border-radius: 9px; padding: 8px 10px; font-size: 11px; color: var(--muted);
+      backdrop-filter: blur(10px);
+    }
+    .map-status strong { display: block; color: var(--text); font-size: 12px; margin-bottom: 2px; }
     .panel .hd {
       display: flex; align-items: center; justify-content: space-between;
       padding: 12px 14px;
@@ -132,8 +142,9 @@
   <div class="wrap">
     <div class="topbar">
       <div class="title">
+        <div class="eyebrow">Threat telemetry</div>
         <h1>SSH Honeypot Live Dashboard</h1>
-        <div class="subtitle">Streaming from <span class="mono">/stream</span> · Data snapshot from <span class="mono">cowrie_alerts.json</span></div>
+        <div class="subtitle">Live events from <span class="mono">alerts.db</span> · automatic JSON fallback during migration</div>
       </div>
       <div class="btns">
         <a class="btn" href="/map" target="_blank" rel="noopener">Open live map</a>
@@ -158,12 +169,13 @@
     </div>
 
     <div class="grid">
-      <div class="panel">
+      <div class="panel live-panel">
         <div class="hd">
-          <div class="h">Live map</div>
-          <div class="muted">Markers update as events arrive</div>
+          <div><div class="h">Live attack map</div><small class="muted">Geolocated source IPs update as attempts arrive</small></div>
+          <div class="muted" id="mapCount">0 mapped locations</div>
         </div>
-        <div class="bd">
+        <div class="bd map-shell">
+          <div class="map-status"><strong id="mapStatus">Waiting for telemetry</strong><span id="mapDetail">Loading current attack locations…</span></div>
           <div id="map"></div>
         </div>
       </div>
@@ -229,7 +241,7 @@
     const dot = el("dot");
     const conn = el("conn");
 
-    let map, markersLayer;
+    let map, markersLayer, markerBounds;
     let seenIds = new Set();
     let ipSet = new Set();
 
@@ -264,12 +276,29 @@
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
       const popup = `<b>${escapeHtml(ev.ip)}</b><br/>${escapeHtml(ev.city)}, ${escapeHtml(ev.country)}<br/><span class="mono">${lat.toFixed(4)}, ${lon.toFixed(4)}</span>`;
       L.circleMarker([lat, lon], {
-        radius: 6,
+        radius: 7,
         weight: 1,
         color: "***REMOVED***c4b5fd",
         fillColor: "***REMOVED***7c3aed",
-        fillOpacity: 0.6
+        fillOpacity: 0.78
       }).bindPopup(popup).addTo(markersLayer);
+      markerBounds.extend([lat, lon]);
+    }
+
+    function updateMapStatus() {
+      const locationCount = markersLayer ? markersLayer.getLayers().length : 0;
+      el("mapCount").textContent = `${locationCount} mapped locations`;
+      el("mapStatus").textContent = locationCount ? "Live locations mapped" : "No geolocated attempts yet";
+      el("mapDetail").textContent = locationCount
+        ? "New source IPs are added automatically."
+        : "Waiting for Cowrie telemetry with coordinates.";
+    }
+
+    function zoomToMarkers() {
+      if (markerBounds && markerBounds.isValid()) {
+        map.fitBounds(markerBounds, { padding: [34, 34], maxZoom: 4 });
+      }
+      updateMapStatus();
     }
 
     function prependFeedRow(ev) {
@@ -320,6 +349,7 @@
 
       el("feedEmpty").style.display = "none";
       el("statLoaded").textContent = seenIds.size;
+      updateMapStatus();
     }
 
     async function refreshSnapshot() {
@@ -358,6 +388,7 @@
       // seed from snapshot events (newest first if backend sorts)
       const events = (eventsJson.events || []);
       events.forEach(ev => applyEvent(ev, "snapshot"));
+      zoomToMarkers();
 
       el("feedEmpty").style.display = seenIds.size ? "none" : "block";
       el("statLoaded").textContent = seenIds.size;
@@ -370,6 +401,8 @@
         attribution: "&copy; OpenStreetMap contributors"
       }).addTo(map);
       markersLayer = L.layerGroup().addTo(map);
+      markerBounds = L.latLngBounds([]);
+      setTimeout(() => map.invalidateSize(), 0);
     }
 
     function startStream() {
