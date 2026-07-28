@@ -37,9 +37,6 @@ EMAIL_USER = os.getenv("EMAIL_USER")
 EMAIL_PASS = os.getenv("EMAIL_PASS")
 EMAIL_TO = os.getenv("EMAIL_TO")
 
-alerted_ips = set()
-
-
 def load_last_position():
     if not os.path.exists(LAST_POSITION_FILE):
         return 0
@@ -336,7 +333,11 @@ def post_telegram(text):
         "parse_mode": "Markdown"
     }
     try:
-        resp = requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", json=payload)
+        resp = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+            json=payload,
+            timeout=10,
+        )
         if resp.status_code == 200:
             print("✔️ Telegram alert sent.")
         else:
@@ -355,7 +356,7 @@ def send_email_batch_alert(entries):
     msg["From"] = EMAIL_USER
     msg["To"] = EMAIL_TO
     try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as server:
             server.starttls()
             server.login(EMAIL_USER, EMAIL_PASS)
             server.send_message(msg)
@@ -367,8 +368,6 @@ def send_email_batch_alert(entries):
 def process_logs():
     init_db()
     new_alerts = []
-    seen_ips = set()
-
     if not os.path.exists(LOG_FILE):
         print("Log file not found.")
         return
@@ -381,7 +380,7 @@ def process_logs():
     with open(LOG_FILE, "r", encoding="utf-8", errors="ignore") as f:
         f.seek(start_position)
         lines = f.readlines()
-        save_last_position(f.tell())
+        end_position = f.tell()
 
     ip_bot_meta = collect_bot_fingerprints(lines)
 
@@ -392,6 +391,7 @@ def process_logs():
 
         with geoip2.database.Reader(GEO_DB_PATH) as reader:
             conn = get_db_connection()
+            completed = False
             try:
                 for line in lines:
                     if "New connection" not in line:
@@ -400,9 +400,6 @@ def process_logs():
                     if not match:
                         continue
                     ip = match.group(1)
-                    if ip in alerted_ips or ip in seen_ips:
-                        continue
-                    seen_ips.add(ip)
                     city, country, lat, lon = resolve_geo(ip, reader)
                     if lat is None or lon is None:
                         continue
@@ -433,7 +430,12 @@ def process_logs():
                             }
                         ]
                     }
-                    requests.post(LOKI_URL, json=payload)
+                    try:
+                        response = requests.post(LOKI_URL, json=payload, timeout=10)
+                        response.raise_for_status()
+                    except requests.RequestException as exc:
+                        # Loki is an optional sink; retain the local alert even if it is unavailable.
+                        print(f"Loki push failed for {ip}: {exc}")
                     new_alerts.append({
                         "ip": ip, "city": city, "country": country,
                         "lat": lat, "lon": lon,
@@ -445,11 +447,18 @@ def process_logs():
                         ip, country, city, username, password, event_timestamp,
                         lat, lon, asn, org, severity, client_version, hassh, conn=conn,
                     )
-                    conn.commit()
-                    with open(LOG_ALERT_FILE, "a", encoding="utf-8") as logf:
-                        logf.write(f"{ip},{city},{country},{event_timestamp}\n")
+                    try:
+                        with open(LOG_ALERT_FILE, "a", encoding="utf-8") as logf:
+                            logf.write(f"{ip},{city},{country},{event_timestamp}\n")
+                    except OSError as exc:
+                        print(f"Alert log write failed for {ip}: {exc}")
+                completed = True
 
             finally:
+                if completed:
+                    conn.commit()
+                else:
+                    conn.rollback()
                 conn.close()
     finally:
         if asn_reader is not None:
@@ -458,6 +467,9 @@ def process_logs():
     if new_alerts:
         send_telegram_batch_alert(new_alerts)
         send_email_batch_alert(new_alerts)
+
+    # Advance the cursor only after the local database transaction completed.
+    save_last_position(end_position)
 
 
 if __name__ == "__main__":

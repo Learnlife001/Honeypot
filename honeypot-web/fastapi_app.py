@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sqlite3
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +17,7 @@ from fastapi.templating import Jinja2Templates
 
 HERE = Path(__file__).resolve().parent
 ALERTS_PATH = HERE / "cowrie_alerts.json"
+DB_PATH = HERE / "alerts.db"
 STATIC_DIR = HERE / "static"
 TEMPLATES_DIR = HERE / "templates"
 
@@ -34,9 +36,31 @@ def _file_mtime_iso(path: Path) -> Optional[str]:
 
 def load_events() -> List[Dict[str, Any]]:
     """
-    Reads the latest events snapshot from cowrie_alerts.json.
-    Expected format: JSON array of objects with at least ip/country/city/lat/lon.
+    Read events from the live SQLite store, falling back to the legacy JSON snapshot.
+
+    The Cowrie ingestion process writes alerts.db; querying it here keeps the
+    dashboard and map current without requiring a second export process.
     """
+    if DB_PATH.exists():
+        try:
+            with sqlite3.connect(DB_PATH, timeout=5) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    """
+                    SELECT id, ip, country, city, latitude AS lat, longitude AS lon, timestamp
+                    FROM alerts
+                    WHERE ip IS NOT NULL
+                    ORDER BY id DESC
+                    LIMIT 2000
+                    """
+                ).fetchall()
+            if rows:
+                return [dict(row) for row in rows]
+        except sqlite3.Error as exc:
+            # Keep the legacy dashboard usable during a database migration or lock issue.
+            if not ALERTS_PATH.exists():
+                raise HTTPException(status_code=500, detail=f"Failed to read alerts.db: {exc}")
+
     if not ALERTS_PATH.exists():
         return []
 
@@ -58,7 +82,7 @@ def load_events() -> List[Dict[str, Any]]:
             continue
         events.append(item)
 
-    ***REMOVED*** newest-first if we ever get timestamps; otherwise keep file order
+    # Newest-first if timestamps are available; otherwise keep file order.
     def key(ev: Dict[str, Any]) -> str:
         ts = ev.get("timestamp")
         return ts if isinstance(ts, str) else ""
@@ -74,6 +98,7 @@ def event_id(ev: Dict[str, Any]) -> Tuple[Any, ...]:
     If a timestamp exists in the future, it will make this more accurate.
     """
     return (
+        ev.get("id"),
         ev.get("ip"),
         ev.get("country"),
         ev.get("city"),
@@ -117,7 +142,7 @@ if STATIC_DIR.exists():
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse("dashboard.html", {"request": request})
+    return templates.TemplateResponse(request, "dashboard.html")
 
 
 @app.get("/events")
@@ -137,42 +162,39 @@ def get_stats() -> JSONResponse:
 
 
 @app.get("/map")
-def get_map() -> HTMLResponse:
+def get_map(request: Request) -> HTMLResponse:
     """
-    Optional legacy map support: serve the generated static/attack_map.html if present.
-    This keeps the existing 'generated Folium HTML map' workflow working without
-    requiring Flask to run.
+    Keep the legacy link useful by serving the live dashboard map.  The previous
+    route pointed at a stale generated file in a different directory.
     """
-    map_path = STATIC_DIR / "attack_map.html"
-    if not map_path.exists():
-        raise HTTPException(status_code=404, detail="attack_map.html not found. Generate it or disable map link.")
-    return HTMLResponse(content=map_path.read_text(encoding="utf-8"))
+    return templates.TemplateResponse(request, "dashboard.html")
 
 
 @app.get("/stream")
 async def stream() -> StreamingResponse:
     """
-    Server-Sent Events stream of newly observed events in cowrie_alerts.json.
+    Server-Sent Events stream of newly observed alerts.
 
-    Note: cowrie_alerts.json is a snapshot file (not an append-only log), so we
-    detect "new" events by diffing event IDs between polls.
+    The primary source is alerts.db, with the legacy JSON snapshot used only
+    when the database is not available. New alerts are detected by diffing IDs.
     """
 
     async def gen() -> AsyncGenerator[bytes, None]:
         last_ids: Set[Tuple[Any, ...]] = set()
         last_mtime: Optional[float] = None
 
-        ***REMOVED*** Initial handshake event so the UI can show "connected"
+        # Initial handshake event lets the UI show "connected".
         yield f"event: hello\ndata: {json.dumps({'connected_at': _utc_now_iso()})}\n\n".encode("utf-8")
 
         while True:
+            source_path = DB_PATH if DB_PATH.exists() else ALERTS_PATH
             try:
-                st = ALERTS_PATH.stat()
+                st = source_path.stat()
                 mtime = st.st_mtime
             except FileNotFoundError:
                 mtime = None
 
-            ***REMOVED*** Only reload if file changed, otherwise just keep-alive
+            # Only reload when the snapshot changes; otherwise keep the connection alive.
             if mtime is not None and mtime != last_mtime:
                 last_mtime = mtime
                 try:
@@ -188,7 +210,7 @@ async def stream() -> StreamingResponse:
                 last_ids = current_ids
 
                 if new_ids:
-                    ***REMOVED*** Emit events in file order (best-effort "recent first" if timestamps exist)
+                    # Emit in file order (best-effort recent-first if timestamps exist).
                     for ev in events:
                         if event_id(ev) in new_ids:
                             yield f"event: attack\ndata: {json.dumps(ev)}\n\n".encode("utf-8")

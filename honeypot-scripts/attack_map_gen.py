@@ -2,14 +2,14 @@ import folium
 import json
 import os
 
-***REMOVED*** Path to JSON alert data file
+# Path to JSON alert data file.
 json_file = "cowrie_alerts.json"
 
-***REMOVED*** Default map center
+# Default map center.
 map_center = [0, 0]
 m = folium.Map(location=map_center, zoom_start=2)
 
-***REMOVED*** Load IP data
+# Load IP data.
 if os.path.exists(json_file):
     with open(json_file, "r") as f:
         data = json.load(f)
@@ -27,6 +27,6 @@ if os.path.exists(json_file):
                     icon=folium.Icon(color="red")
                 ).add_to(m)
 
-***REMOVED*** Save map
+# Save map.
 m.save("attack_map.html")
 print("Map generated: attack_map.html")

@@ -136,7 +136,7 @@
         <div class="subtitle">Streaming from <span class="mono">/stream</span> · Data snapshot from <span class="mono">cowrie_alerts.json</span></div>
       </div>
       <div class="btns">
-        <a class="btn" href="/map" target="_blank" rel="noopener">Open legacy map</a>
+        <a class="btn" href="/map" target="_blank" rel="noopener">Open live map</a>
         <button class="btn" id="btnRefresh">Refresh</button>
         <span class="pill"><span id="dot" class="dot"></span><span id="conn">disconnected</span></span>
       </div>
@@ -252,11 +252,17 @@
       return String(s);
     }
 
+    function escapeHtml(s) {
+      const node = document.createElement("span");
+      node.textContent = safeText(s);
+      return node.innerHTML;
+    }
+
     function addMarker(ev) {
       const lat = Number(ev.lat);
       const lon = Number(ev.lon);
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
-      const popup = `<b>${safeText(ev.ip)}</b><br/>${safeText(ev.city)}, ${safeText(ev.country)}<br/><span class="mono">${lat.toFixed(4)}, ${lon.toFixed(4)}</span>`;
+      const popup = `<b>${escapeHtml(ev.ip)}</b><br/>${escapeHtml(ev.city)}, ${escapeHtml(ev.country)}<br/><span class="mono">${lat.toFixed(4)}, ${lon.toFixed(4)}</span>`;
       L.circleMarker([lat, lon], {
         radius: 6,
         weight: 1,
@@ -269,11 +275,17 @@
     function prependFeedRow(ev) {
       const feed = el("feed");
       const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td class="mono">${safeText(ev.ip)}</td>
-        <td>${safeText(ev.country)}, ${safeText(ev.city)}</td>
-        <td class="mono">${Number(ev.lat).toFixed(4)}, ${Number(ev.lon).toFixed(4)}</td>
-      `;
+      const values = [
+        safeText(ev.ip),
+        `${safeText(ev.country)}, ${safeText(ev.city)}`,
+        `${Number(ev.lat).toFixed(4)}, ${Number(ev.lon).toFixed(4)}`
+      ];
+      values.forEach((value, index) => {
+        const td = document.createElement("td");
+        if (index !== 1) td.className = "mono";
+        td.textContent = value;
+        tr.appendChild(td);
+      });
       feed.prepend(tr);
 
       while (feed.children.length > MAX_FEED_ROWS) {
@@ -334,7 +346,11 @@
       const rows = (stats.top_countries || []).slice(0, 10);
       rows.forEach(r => {
         const li = document.createElement("li");
-        li.innerHTML = `<span>${safeText(r.country)}</span> <span class="muted">(${safeText(r.count)})</span>`;
+        li.append(document.createTextNode(`${safeText(r.country)} `));
+        const count = document.createElement("span");
+        count.className = "muted";
+        count.textContent = `(${safeText(r.count)})`;
+        li.appendChild(count);
         list.appendChild(li);
       });
       el("countriesEmpty").style.display = rows.length ? "none" : "block";
@@ -395,7 +411,11 @@
         const rows = (stats.top_countries || []).slice(0, 10);
         rows.forEach(r => {
           const li = document.createElement("li");
-          li.innerHTML = `<span>${safeText(r.country)}</span> <span class="muted">(${safeText(r.count)})</span>`;
+          li.append(document.createTextNode(`${safeText(r.country)} `));
+          const count = document.createElement("span");
+          count.className = "muted";
+          count.textContent = `(${safeText(r.count)})`;
+          li.appendChild(count);
           list.appendChild(li);
         });
         el("countriesEmpty").style.display = rows.length ? "none" : "block";
