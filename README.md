@@ -74,6 +74,16 @@ Serverless hosts are not suitable for the full deployment.
 Keep the honeypot isolated from production systems and do not forward its
 captured credentials or sessions into your own infrastructure.
 
+## Deploy the historical dashboard to Vercel
+
+If you no longer run Cowrie, deploy the static historical map in
+`static-dashboard/`. In Vercel, import this repository and set **Root Directory**
+to `static-dashboard`. It needs no environment variables or backend service.
+
+This static deployment deliberately labels itself as a snapshot. It uses the
+bundled `cowrie_alerts.json` file and will not receive new attempts until a
+live Cowrie/VPS backend is restored.
+
 ## Project layout
 
 - `honeypot-web/fastapi_app.py` — live API, SSE stream, and dashboard routes.
