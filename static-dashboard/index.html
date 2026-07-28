@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Honeypot Attack Map</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    :root { --bg: rgb(8, 12, 27); --panel: rgb(17, 24, 51); --text: rgb(238, 242, 255); --muted: rgb(169, 180, 208); --accent: rgb(139, 92, 246); --border: rgba(255,255,255,.12); }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 5% 0%, rgba(124,58,237,.28), transparent 34%), var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; }
+    main { max-width: 1360px; margin: auto; padding: 28px 20px 40px; }
+    header { display: flex; justify-content: space-between; gap: 20px; align-items: start; margin-bottom: 22px; }
+    .eyebrow { margin: 0 0 6px; color: rgb(196,181,253); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; font-weight: 800; }
+    h1 { font-size: clamp(24px, 4vw, 38px); margin: 0; letter-spacing: -.04em; }
+    .subtitle, .muted { color: var(--muted); }
+    .badge { padding: 8px 11px; border: 1px solid rgba(251,191,36,.4); color: rgb(253,230,138); background: rgba(120,53,15,.25); border-radius: 999px; white-space: nowrap; }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
+    .card, .panel { border: 1px solid var(--border); background: rgba(17,24,51,.78); border-radius: 14px; box-shadow: 0 18px 45px rgba(0,0,0,.2); }
+    .card { padding: 15px; } .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; } .value { margin-top: 6px; font-size: 26px; font-weight: 800; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(290px, .65fr); gap: 14px; }
+    .panel-head { display: flex; justify-content: space-between; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+    .panel-head strong { display: block; } .panel-head small { color: var(--muted); }
+    .map-wrap { position: relative; padding: 12px; } #map { height: 530px; border-radius: 10px; background: rgb(13, 18, 36); }
+    .map-note { position: absolute; z-index: 500; left: 27px; top: 27px; padding: 8px 10px; border-radius: 8px; background: rgba(8,12,27,.88); border: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+    .list { list-style: none; padding: 4px 16px 14px; margin: 0; } .list li { display: flex; justify-content: space-between; gap: 8px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.08); } .list li:last-child { border: 0; }
+    .feed { margin-top: 14px; } table { width: 100%; border-collapse: collapse; } th, td { padding: 10px 16px; text-align: left; border-bottom: 1px solid rgba(255,255,255,.08); } th { color: var(--muted); font-size: 11px; text-transform: uppercase; } .mono { font-family: ui-monospace, Consolas, monospace; }
+    @media (max-width: 900px) { .stats { grid-template-columns: repeat(2, 1fr); } .layout { grid-template-columns: 1fr; } #map { height: 440px; } header { display: block; } .badge { display: inline-block; margin-top: 14px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div><p class="eyebrow">Honeypot telemetry</p><h1>Attack origin map</h1><p class="subtitle">Historical Cowrie snapshot — deployable as a static site.</p></div>
+      <span class="badge">Snapshot data · not live</span>
+    </header>
+    <section class="stats">
+      <div class="card"><div class="label">Recorded attempts</div><div class="value" id="attempts">—</div></div>
+      <div class="card"><div class="label">Unique source IPs</div><div class="value" id="ips">—</div></div>
+      <div class="card"><div class="label">Countries</div><div class="value" id="countries">—</div></div>
+      <div class="card"><div class="label">Mapped locations</div><div class="value" id="locations">—</div></div>
+    </section>
+    <section class="layout">
+      <article class="panel"><div class="panel-head"><div><strong>Global attack origins</strong><small>Each marker represents a recorded source IP location.</small></div></div><div class="map-wrap"><div class="map-note" id="mapNote">Loading locations…</div><div id="map"></div></div></article>
+      <aside class="panel"><div class="panel-head"><div><strong>Top countries</strong><small>By recorded attempt count</small></div></div><ol class="list" id="countryList"></ol></aside>
+    </section>
+    <section class="panel feed"><div class="panel-head"><div><strong>Recent recorded sources</strong><small>From the bundled historical snapshot</small></div></div><div style="overflow:auto"><table><thead><tr><th>IP address</th><th>Location</th><th>Coordinates</th></tr></thead><tbody id="feed"></tbody></table></div></section>
+  </main>
+  <script>
+    const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
+    const map = L.map("map", { worldCopyJump: true }).setView([20, 0], 2);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap contributors" }).addTo(map);
+    const markers = L.layerGroup().addTo(map);
+
+    async function loadDashboard() {
+      const response = await fetch("./cowrie_alerts.json");
+      if (!response.ok) throw new Error("Unable to load bundled alert data");
+      const events = (await response.json()).filter(event => event && event.ip);
+      const withCoordinates = events.filter(event => Number.isFinite(Number(event.lat)) && Number.isFinite(Number(event.lon)));
+      const countryCounts = new Map();
+      events.forEach(event => countryCounts.set(event.country || "Unknown", (countryCounts.get(event.country || "Unknown") || 0) + 1));
+      document.getElementById("attempts").textContent = events.length.toLocaleString();
+      document.getElementById("ips").textContent = new Set(events.map(event => event.ip)).size.toLocaleString();
+      document.getElementById("countries").textContent = countryCounts.size.toLocaleString();
+      document.getElementById("locations").textContent = withCoordinates.length.toLocaleString();
+      const bounds = L.latLngBounds([]);
+      withCoordinates.forEach(event => {
+        const lat = Number(event.lat), lon = Number(event.lon);
+        const popup = `<strong>${escapeHtml(event.ip)}</strong><br>${escapeHtml(event.city || "Unknown")}, ${escapeHtml(event.country || "Unknown")}<br><span class="mono">${lat.toFixed(4)}, ${lon.toFixed(4)}</span>`;
+        L.circleMarker([lat, lon], { radius: 6, color: "rgb(254,215,170)", fillColor: "rgb(249,115,22)", fillOpacity: .78, weight: 1 }).bindPopup(popup).addTo(markers);
+        bounds.extend([lat, lon]);
+      });
+      if (bounds.isValid()) map.fitBounds(bounds, { padding: [32, 32], maxZoom: 4 });
+      document.getElementById("mapNote").textContent = `${withCoordinates.length.toLocaleString()} geolocated source IPs`;
+      document.getElementById("countryList").replaceChildren(...[...countryCounts.entries()].sort((a,b) => b[1] - a[1]).slice(0, 10).map(([country, count]) => { const item = document.createElement("li"); item.append(document.createTextNode(country)); const value = document.createElement("strong"); value.textContent = count.toLocaleString(); item.append(value); return item; }));
+      document.getElementById("feed").replaceChildren(...events.slice(0, 30).map(event => { const row = document.createElement("tr"); [event.ip, `${event.country || "Unknown"}, ${event.city || "Unknown"}`, Number.isFinite(Number(event.lat)) ? `${Number(event.lat).toFixed(4)}, ${Number(event.lon).toFixed(4)}` : "Unknown"].forEach((value, index) => { const cell = document.createElement("td"); cell.textContent = value; if (index !== 1) cell.className = "mono"; row.append(cell); }); return row; }));
+    }
+    loadDashboard().catch(error => { document.getElementById("mapNote").textContent = error.message; });
+  </script>
+</body>
+</html>
