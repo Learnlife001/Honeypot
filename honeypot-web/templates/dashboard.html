@@ -10,13 +10,13 @@
 
   <style>
     :root {
-      --bg: ***REMOVED***0b1020;
-      --panel: ***REMOVED***111833;
-      --muted: ***REMOVED***a9b4d0;
-      --text: ***REMOVED***eef2ff;
-      --accent: ***REMOVED***7c3aed;
-      --good: ***REMOVED***22c55e;
-      --bad: ***REMOVED***ef4444;
+      --bg: #0b1020;
+      --panel: #111833;
+      --muted: #a9b4d0;
+      --text: #eef2ff;
+      --accent: #7c3aed;
+      --good: #22c55e;
+      --bad: #ef4444;
       --border: rgba(255,255,255,0.10);
     }
 
@@ -211,6 +211,7 @@
         <table>
           <thead>
             <tr>
+              <th style="width: 220px;">Time (UTC)</th>
               <th style="width: 220px;">IP</th>
               <th>Geo</th>
               <th style="width: 140px;">Coords</th>
@@ -288,8 +289,8 @@
       L.circleMarker([lat, lon], {
         radius: 7,
         weight: 1,
-        color: "***REMOVED***c4b5fd",
-        fillColor: "***REMOVED***7c3aed",
+        color: "#c4b5fd",
+        fillColor: "#7c3aed",
         fillOpacity: 0.78
       }).bindPopup(popup).addTo(markersLayer);
       markerBounds.extend([lat, lon]);
@@ -315,13 +316,16 @@
       const feed = el("feed");
       const tr = document.createElement("tr");
       const values = [
+        safeText(ev.timestamp || "—"),
         safeText(ev.ip),
         `${safeText(ev.country)}, ${safeText(ev.city)}`,
-        `${Number(ev.lat).toFixed(4)}, ${Number(ev.lon).toFixed(4)}`
+        Number.isFinite(Number(ev.lat)) && Number.isFinite(Number(ev.lon))
+          ? `${Number(ev.lat).toFixed(4)}, ${Number(ev.lon).toFixed(4)}`
+          : "—"
       ];
       values.forEach((value, index) => {
         const td = document.createElement("td");
-        if (index !== 1) td.className = "mono";
+        if (index !== 2) td.className = "mono";
         td.textContent = value;
         tr.appendChild(td);
       });
