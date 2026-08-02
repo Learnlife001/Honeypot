@@ -183,8 +183,18 @@ async def stream() -> StreamingResponse:
     """
 
     async def gen() -> AsyncGenerator[bytes, None]:
-        last_ids: Set[Tuple[Any, ...]] = set()
-        last_mtime: Optional[float] = None
+        # The UI loads existing history from /events. Seed the stream cursor with
+        # current IDs so a new browser receives only attempts recorded afterward.
+        try:
+            last_ids: Set[Tuple[Any, ...]] = {event_id(ev) for ev in load_events()}
+        except HTTPException:
+            last_ids = set()
+
+        source_path = DB_PATH if DB_PATH.exists() else ALERTS_PATH
+        try:
+            last_mtime: Optional[float] = source_path.stat().st_mtime
+        except FileNotFoundError:
+            last_mtime = None
 
         # Initial handshake event lets the UI show "connected".
         yield f"event: hello\ndata: {json.dumps({'connected_at': _utc_now_iso()})}\n\n".encode("utf-8")
