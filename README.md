@@ -7,12 +7,12 @@ live FastAPI dashboard with a streaming attack map.
 ## Architecture
 
 ```text
-Internet → Cowrie → cowrie_geo_push.py → alerts.db → FastAPI dashboard
-                                      └→ optional Loki / email / Telegram alerts
+Internet → Cowrie → cowrie_to_sqlite.py → alerts.db → FastAPI dashboard
 ```
 
-`honeypot-scripts/cowrie_geo_push.py` reads Cowrie's log, enriches IP addresses
-with GeoLite2 city/ASN data, and writes alerts to `honeypot-web/alerts.db`.
+`honeypot-scripts/cowrie_to_sqlite.py` follows Cowrie's JSON log, enriches each
+new source IP once, caches the result, and writes attempts to
+`honeypot-web/alerts.db`. No email or messaging credentials are used.
 The dashboard reads that database directly and publishes new events through
 Server-Sent Events (SSE). A legacy JSON snapshot is used only when the database
 has not yet received any alerts.
@@ -43,21 +43,18 @@ Copy `.env.example` to `.env` and update the paths for the host that runs
 Cowrie. At minimum, configure:
 
 ```dotenv
-LOG_FILE=/path/to/cowrie.log
-GEO_DB_PATH=/path/to/GeoLite2-City.mmdb
-GEO_ASN_PATH=/path/to/GeoLite2-ASN.mmdb
+COWRIE_JSON_LOG=/path/to/cowrie.json
 ALERTS_DB_PATH=/path/to/Honeypot/honeypot-web/alerts.db
 ```
 
 Run the ingestion job continuously with your service manager or scheduler:
 
 ```bash
-python honeypot-scripts/cowrie_geo_push.py
+python honeypot-scripts/cowrie_to_sqlite.py
 ```
 
-For real-time alerts, run it on a short interval or as a supervised service.
-The dashboard becomes live only after this job can access Cowrie's log and
-write rows to `alerts.db`.
+Run it continuously as a systemd service. The dashboard becomes live after the
+ingestor can access Cowrie's JSON log and write rows to `alerts.db`.
 
 ## Deploy on a VPS
 
@@ -65,7 +62,7 @@ Use an Ubuntu VPS for the full stack. Cowrie needs a persistent SSH listener,
 and this project also needs a persistent ingestion process and SQLite storage.
 Serverless hosts are not suitable for the full deployment.
 
-1. Install Python, Cowrie, and the GeoLite2 databases on the VPS.
+1. Install Python and Cowrie on the VPS.
 2. Clone this repository and create `.env` with the VPS paths.
 3. Run the ingestion script as a service.
 4. Run Uvicorn behind a reverse proxy for the dashboard.

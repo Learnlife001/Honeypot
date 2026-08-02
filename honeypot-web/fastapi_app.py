@@ -17,7 +17,7 @@ from fastapi.templating import Jinja2Templates
 
 HERE = Path(__file__).resolve().parent
 ALERTS_PATH = HERE / "cowrie_alerts.json"
-DB_PATH = HERE / "alerts.db"
+DB_PATH = Path(os.getenv("ALERTS_DB_PATH", HERE / "alerts.db"))
 STATIC_DIR = HERE / "static"
 TEMPLATES_DIR = HERE / "templates"
 
@@ -114,6 +114,8 @@ def compute_stats(events: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     countries = [e.get("country") or "Unknown" for e in events]
     top_countries = [{"country": c, "count": n} for c, n in Counter(countries).most_common(10)]
+    ips = [e.get("ip") for e in events if e.get("ip")]
+    top_ips = [{"ip": ip, "count": n} for ip, n in Counter(ips).most_common(10)]
 
     last_ts: Optional[str] = None
     for e in events:
@@ -128,6 +130,7 @@ def compute_stats(events: List[Dict[str, Any]]) -> Dict[str, Any]:
         "total_attacks": total_attacks,
         "unique_ip_count": unique_ips,
         "top_countries": top_countries,
+        "top_ips": top_ips,
         "last_attack_timestamp": last_ts,
         "generated_at": _utc_now_iso(),
     }
@@ -228,6 +231,8 @@ async def stream() -> StreamingResponse:
 def health() -> Dict[str, Any]:
     return {
         "ok": True,
+        "database_exists": DB_PATH.exists(),
+        "database_mtime": _file_mtime_iso(DB_PATH),
         "alerts_file_exists": ALERTS_PATH.exists(),
         "alerts_file_mtime": _file_mtime_iso(ALERTS_PATH),
         "pid": os.getpid(),

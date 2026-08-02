@@ -101,7 +101,7 @@
     .card .k { color: var(--muted); font-size: 11px; }
     .card .v { font-size: 18px; font-weight: 700; margin-top: 6px; }
 
-    ***REMOVED***map { width: 100%; height: 440px; border-radius: 12px; }
+    #map { width: 100%; height: 440px; border-radius: 12px; }
 
     table {
       width: 100%;
@@ -183,11 +183,21 @@
       <div class="panel">
         <div class="hd">
           <div class="h">Leaderboard</div>
-          <div class="muted">Top countries (snapshot)</div>
+          <div class="muted">Current database totals</div>
         </div>
         <div class="bd">
-          <ol class="list" id="countries"></ol>
-          <div class="muted" id="countriesEmpty" style="display:none;">No data yet.</div>
+          <div class="cols2">
+            <div>
+              <div class="muted">Top countries</div>
+              <ol class="list" id="countries"></ol>
+              <div class="muted" id="countriesEmpty" style="display:none;">No data yet.</div>
+            </div>
+            <div>
+              <div class="muted">Top source IPs</div>
+              <ol class="list mono" id="topIps"></ol>
+              <div class="muted" id="topIpsEmpty" style="display:none;">No data yet.</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -385,6 +395,20 @@
       });
       el("countriesEmpty").style.display = rows.length ? "none" : "block";
 
+      const topIps = el("topIps");
+      topIps.innerHTML = "";
+      const ipRows = (stats.top_ips || []).slice(0, 10);
+      ipRows.forEach(r => {
+        const li = document.createElement("li");
+        li.append(document.createTextNode(`${safeText(r.ip)} `));
+        const count = document.createElement("span");
+        count.className = "muted";
+        count.textContent = `(${safeText(r.count)})`;
+        li.appendChild(count);
+        topIps.appendChild(li);
+      });
+      el("topIpsEmpty").style.display = ipRows.length ? "none" : "block";
+
       // seed from snapshot events (newest first if backend sorts)
       const events = (eventsJson.events || []);
       events.forEach(ev => applyEvent(ev, "snapshot"));
@@ -452,6 +476,20 @@
           list.appendChild(li);
         });
         el("countriesEmpty").style.display = rows.length ? "none" : "block";
+
+        const topIps = el("topIps");
+        topIps.innerHTML = "";
+        const ipRows = (stats.top_ips || []).slice(0, 10);
+        ipRows.forEach(r => {
+          const li = document.createElement("li");
+          li.append(document.createTextNode(`${safeText(r.ip)} `));
+          const count = document.createElement("span");
+          count.className = "muted";
+          count.textContent = `(${safeText(r.count)})`;
+          li.appendChild(count);
+          topIps.appendChild(li);
+        });
+        el("topIpsEmpty").style.display = ipRows.length ? "none" : "block";
       } catch (_) {}
     }
 
