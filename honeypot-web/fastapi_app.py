@@ -47,7 +47,9 @@ def load_events() -> List[Dict[str, Any]]:
                 conn.row_factory = sqlite3.Row
                 rows = conn.execute(
                     """
-                    SELECT id, ip, country, city, latitude AS lat, longitude AS lon, timestamp
+                    SELECT id, event_type, session, ip, source_port, country, city,
+                           username, password, timestamp, latitude AS lat,
+                           longitude AS lon, severity, message, command
                     FROM alerts
                     WHERE ip IS NOT NULL
                     ORDER BY id DESC
@@ -136,6 +138,50 @@ def compute_stats(events: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+def compute_db_stats() -> Dict[str, Any]:
+    """Compute complete database totals without the event-window limit."""
+    with sqlite3.connect(DB_PATH, timeout=5) as conn:
+        conn.row_factory = sqlite3.Row
+        summary = conn.execute(
+            """
+            SELECT COUNT(*) AS total_attacks,
+                   COUNT(DISTINCT ip) AS unique_ip_count,
+                   MAX(timestamp) AS last_attack_timestamp,
+                   SUM(CASE WHEN event_type = 'cowrie.login.failed' THEN 1 ELSE 0 END) AS failed_logins,
+                   SUM(CASE WHEN event_type = 'cowrie.login.success' THEN 1 ELSE 0 END) AS successful_logins,
+                   SUM(CASE WHEN event_type = 'cowrie.session.connect' THEN 1 ELSE 0 END) AS connection_only,
+                   SUM(CASE WHEN command IS NOT NULL AND command != '' THEN 1 ELSE 0 END) AS commands_observed
+            FROM alerts
+            """
+        ).fetchone()
+        countries = conn.execute(
+            """SELECT COALESCE(country, 'Unknown') AS value, COUNT(*) AS count
+               FROM alerts GROUP BY value ORDER BY count DESC LIMIT 10"""
+        ).fetchall()
+        ips = conn.execute(
+            """SELECT ip AS value, COUNT(*) AS count
+               FROM alerts WHERE ip IS NOT NULL GROUP BY ip ORDER BY count DESC LIMIT 10"""
+        ).fetchall()
+        usernames = conn.execute(
+            """SELECT username AS value, COUNT(*) AS count
+               FROM alerts WHERE username IS NOT NULL AND username != ''
+               GROUP BY username ORDER BY count DESC LIMIT 10"""
+        ).fetchall()
+        passwords = conn.execute(
+            """SELECT password AS value, COUNT(*) AS count
+               FROM alerts WHERE password IS NOT NULL AND password != ''
+               GROUP BY password ORDER BY count DESC LIMIT 10"""
+        ).fetchall()
+    return {
+        **dict(summary),
+        "top_countries": [{"country": row["value"], "count": row["count"]} for row in countries],
+        "top_ips": [{"ip": row["value"], "count": row["count"]} for row in ips],
+        "top_usernames": [{"username": row["value"], "count": row["count"]} for row in usernames],
+        "top_passwords": [{"password": row["value"], "count": row["count"]} for row in passwords],
+        "generated_at": _utc_now_iso(),
+    }
+
+
 app = FastAPI(title="Honeypot Live Dashboard API", version="1.0.0")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
@@ -160,8 +206,12 @@ def get_events(limit: int = 200) -> JSONResponse:
 
 @app.get("/stats")
 def get_stats() -> JSONResponse:
-    events = load_events()
-    return JSONResponse(content=compute_stats(events))
+    if DB_PATH.exists():
+        try:
+            return JSONResponse(content=compute_db_stats())
+        except sqlite3.Error:
+            pass
+    return JSONResponse(content=compute_stats(load_events()))
 
 
 @app.get("/map")

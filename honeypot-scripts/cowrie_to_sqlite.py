@@ -63,7 +63,9 @@ def init_db() -> None:
                 org TEXT,
                 severity TEXT,
                 client_version TEXT,
-                hassh TEXT
+                hassh TEXT,
+                message TEXT,
+                command TEXT
             )
             """
         )
@@ -81,6 +83,8 @@ def init_db() -> None:
             "severity": "TEXT",
             "client_version": "TEXT",
             "hassh": "TEXT",
+            "message": "TEXT",
+            "command": "TEXT",
         }
         for column, sql_type in migrations.items():
             if column not in existing:
@@ -196,15 +200,42 @@ def ingest_event(conn: sqlite3.Connection, event: dict[str, Any]) -> bool:
         updated = conn.execute(
             """
             UPDATE alerts
-            SET event_type = ?, username = ?, password = ?
+            SET event_type = ?, username = ?, password = ?, message = ?
             WHERE id = (
                 SELECT id FROM alerts WHERE session = ? ORDER BY id DESC LIMIT 1
             )
             """,
-            (kind, event.get("username"), event.get("password"), session),
+            (kind, event.get("username"), event.get("password"), event.get("message"), session),
         ).rowcount
         if updated:
             return True
+
+    if kind == "cowrie.command.input" and session:
+        updated = conn.execute(
+            """
+            UPDATE alerts
+            SET command = ?, message = COALESCE(?, message)
+            WHERE id = (
+                SELECT id FROM alerts WHERE session = ? ORDER BY id DESC LIMIT 1
+            )
+            """,
+            (event.get("input"), event.get("message"), session),
+        ).rowcount
+        return bool(updated)
+
+    if kind in {"cowrie.session.closed", "cowrie.client.version"} and session:
+        updated = conn.execute(
+            """
+            UPDATE alerts
+            SET message = COALESCE(?, message),
+                client_version = COALESCE(?, client_version)
+            WHERE id = (
+                SELECT id FROM alerts WHERE session = ? ORDER BY id DESC LIMIT 1
+            )
+            """,
+            (event.get("message"), event.get("version"), session),
+        ).rowcount
+        return bool(updated)
 
     if kind != "cowrie.session.connect" and kind not in {
         "cowrie.login.failed",
@@ -217,8 +248,9 @@ def ingest_event(conn: sqlite3.Connection, event: dict[str, Any]) -> bool:
         """
         INSERT OR IGNORE INTO alerts (
             event_key, event_type, session, ip, source_port, country, city,
-            username, password, timestamp, latitude, longitude, asn, org, severity
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            username, password, timestamp, latitude, longitude, asn, org, severity,
+            message, command
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             event_key(event),
@@ -236,6 +268,8 @@ def ingest_event(conn: sqlite3.Connection, event: dict[str, Any]) -> bool:
             geo["asn"],
             geo["org"],
             severity(conn, ip, timestamp),
+            event.get("message"),
+            event.get("input"),
         ),
     )
     return True

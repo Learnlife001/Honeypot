@@ -60,11 +60,25 @@ class CowrieIngestionTests(unittest.TestCase):
             }
         )
         self.assertEqual(self.module.process_available(), 1)
+        self.append(
+            {
+                "eventid": "cowrie.command.input",
+                "session": "abc",
+                "src_ip": "203.0.113.10",
+                "input": "uname -a",
+                "message": "Command found: uname -a",
+                "timestamp": "2026-08-02T13:00:04Z",
+            }
+        )
+        self.assertEqual(self.module.process_available(), 1)
         with closing(sqlite3.connect(self.db)) as conn:
             rows = conn.execute(
-                "SELECT event_type, username, password FROM alerts"
+                "SELECT event_type, username, password, command, message FROM alerts"
             ).fetchall()
-        self.assertEqual(rows, [("cowrie.login.failed", "root", "test")])
+        self.assertEqual(
+            rows,
+            [("cowrie.login.failed", "root", "test", "uname -a", "Command found: uname -a")],
+        )
 
 
 if __name__ == "__main__":

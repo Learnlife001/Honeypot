@@ -27,7 +27,7 @@
     .btn,.pill { display:inline-flex; align-items:center; gap:8px; min-height:36px; padding:0 12px; border:1px solid var(--border); border-radius:9px; background:#111a2a; color:var(--text); font-size:12px; text-decoration:none; }
     .btn { cursor:pointer; } .btn:hover { border-color:#354865; background:#152238; }
     .pill { color:var(--muted); } .dot { width:7px; height:7px; border-radius:50%; background:var(--bad); box-shadow:0 0 12px currentColor; } .dot.ok { background:var(--good); }
-    .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:14px; }
+    .cards { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:14px; }
     .card,.panel { background:linear-gradient(145deg,rgba(17,27,46,.96),rgba(10,17,30,.96)); border:1px solid var(--border); box-shadow:0 18px 45px rgba(0,0,0,.18); }
     .card { position:relative; padding:16px 17px; border-radius:12px; overflow:hidden; }
     .card::after { content:""; position:absolute; inset:auto 0 0; height:2px; background:linear-gradient(90deg,var(--cyan),transparent); opacity:.55; }
@@ -35,7 +35,7 @@
     .card .v { margin-top:8px; font-size:24px; font-weight:760; letter-spacing:-.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .workspace { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(340px,.75fr); gap:14px; align-items:stretch; }
     .side-stack { display:grid; grid-template-rows:auto minmax(0,1fr); gap:14px; min-height:0; }
-    .bottom-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px; }
+    .bottom-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:14px; }
     .panel { border-radius:13px; overflow:hidden; }
     .panel.live-panel { border-color:rgba(57,217,255,.35); }
     .panel .hd { display:flex; align-items:center; justify-content:space-between; gap:14px; min-height:52px; padding:12px 15px; border-bottom:1px solid var(--border); }
@@ -49,6 +49,15 @@
     .latest-ip { margin:9px 0 5px; font-size:24px; font-weight:760; letter-spacing:-.04em; }
     .latest-meta { display:flex; flex-wrap:wrap; gap:6px 12px; color:var(--muted); font-size:11px; }
     .feed-scroll { max-height:438px; overflow:auto; scrollbar-width:thin; scrollbar-color:#32445f transparent; }
+    .feed-item { padding:12px 14px; border-top:1px solid rgba(129,144,170,.13); }
+    .feed-item:hover { background:rgba(57,217,255,.035); }
+    .feed-line { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .feed-ip { margin:6px 0 4px; color:var(--text); font-size:13px; font-weight:700; }
+    .feed-detail { color:var(--muted); font-size:11px; line-height:1.55; overflow-wrap:anywhere; }
+    .status { display:inline-flex; padding:3px 7px; border-radius:999px; font-size:9px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+    .status.failed { color:#fecdd3; background:rgba(244,63,94,.16); }
+    .status.success { color:#bbf7d0; background:rgba(34,197,94,.16); }
+    .status.new { color:#a5f3fc; background:rgba(57,217,255,.13); }
     table { width:100%; border-collapse:collapse; font-size:11px; }
     th { position:sticky; top:0; z-index:2; padding:9px 7px; background:#0e1727; color:var(--muted); text-align:left; font-weight:650; }
     td { padding:10px 7px; border-top:1px solid rgba(129,144,170,.13); vertical-align:top; }
@@ -59,7 +68,7 @@
     .recent-scroll { max-height:210px; overflow:auto; }
     #ipList { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; padding:0; list-style:none; }
     #ipList li { margin:0; padding:7px 9px; border:1px solid var(--border); border-radius:7px; background:rgba(255,255,255,.025); font-size:11px; }
-    @media(max-width:1050px){ .workspace,.bottom-grid{grid-template-columns:1fr} .cards{grid-template-columns:repeat(2,1fr)} #map{height:480px} .feed-scroll{max-height:330px} }
+    @media(max-width:1050px){ .workspace,.bottom-grid{grid-template-columns:1fr} .cards{grid-template-columns:repeat(3,1fr)} #map{height:480px} .feed-scroll{max-height:330px} }
     @media(max-width:650px){ .wrap{padding:14px}.topbar{align-items:flex-start;flex-direction:column}.cards{grid-template-columns:1fr 1fr}.card .v{font-size:19px}.cols2{grid-template-columns:1fr}.btns{flex-wrap:wrap}.workspace{display:block}.side-stack{margin-top:14px}#map{height:390px}.hide-mobile{display:none} }
   </style>
 </head>
@@ -73,7 +82,9 @@
     <div class="cards">
       <div class="card"><div class="k">SSH sessions</div><div class="v" id="statTotal">—</div></div>
       <div class="card"><div class="k">Unique source IPs</div><div class="v" id="statUnique">—</div></div>
-      <div class="card"><div class="k">Leading country</div><div class="v" id="statTopCountry">—</div></div>
+      <div class="card"><div class="k">Failed logins</div><div class="v" id="statFailed">—</div></div>
+      <div class="card"><div class="k">Successful logins</div><div class="v" id="statSuccess">—</div></div>
+      <div class="card"><div class="k">Commands observed</div><div class="v" id="statCommands">—</div></div>
       <div class="card"><div class="k">Last connection</div><div class="v mono" id="lastAttack">—</div></div>
     </div>
 
@@ -93,13 +104,14 @@
         <div class="panel latest"><div class="latest-label">Latest connection</div><div class="latest-ip mono" id="latestIp">Waiting…</div><div class="latest-meta"><span id="latestGeo">No location yet</span><span class="mono" id="latestTime">—</span></div></div>
         <div class="panel">
           <div class="hd"><div><div class="h">Live connection feed</div><small class="muted">Newest Cowrie sessions first</small></div><div class="muted"><span id="statLoaded">—</span> loaded</div></div>
-          <div class="feed-scroll"><table><thead><tr><th>Time</th><th>Source IP</th><th>Location</th><th class="hide-mobile">Coordinates</th></tr></thead><tbody id="feed"></tbody></table><div class="muted" id="feedEmpty" style="padding:14px;display:none;">No connections recorded yet.</div></div>
+          <div class="feed-scroll"><div id="feed"></div><div class="muted" id="feedEmpty" style="padding:14px;display:none;">No connections recorded yet.</div></div>
         </div>
       </div>
     </div>
 
     <div class="bottom-grid">
       <div class="panel"><div class="hd"><div><div class="h">Threat concentration</div><small class="muted">Connection volume by origin</small></div><span class="mono muted" id="generatedAt"></span></div><div class="bd cols2"><div><div class="eyebrow">Top countries</div><ol class="list" id="countries"></ol><div class="muted" id="countriesEmpty" style="display:none;">No data yet.</div></div><div><div class="eyebrow">Top source IPs</div><ol class="list mono" id="topIps"></ol><div class="muted" id="topIpsEmpty" style="display:none;">No data yet.</div></div></div></div>
+      <div class="panel"><div class="hd"><div><div class="h">Credential intelligence</div><small class="muted">Most frequently attempted values</small></div></div><div class="bd cols2"><div><div class="eyebrow">Usernames</div><ol class="list mono" id="topUsernames"></ol><div class="muted" id="usernamesEmpty" style="display:none;">No attempts yet.</div></div><div><div class="eyebrow">Passwords</div><ol class="list mono" id="topPasswords"></ol><div class="muted" id="passwordsEmpty" style="display:none;">No attempts yet.</div></div></div></div>
       <div class="panel"><div class="hd"><div><div class="h">Observed source addresses</div><small class="muted">Unique IPs in the current database window</small></div></div><div class="bd recent-scroll"><ul id="ipList"></ul><div class="muted" id="ipEmpty" style="display:none;">No IPs yet.</div><div class="muted" style="margin-top:12px;font-size:11px;">History loads from <span class="mono">/events</span>; new sessions arrive through <span class="mono">/stream</span>.</div></div></div>
     </div>
 
@@ -177,22 +189,47 @@
 
     function prependFeedRow(ev) {
       const feed = el("feed");
-      const tr = document.createElement("tr");
-      const values = [
-        safeText(ev.timestamp || "—"),
-        safeText(ev.ip),
-        `${safeText(ev.country)}, ${safeText(ev.city)}`,
-        Number.isFinite(Number(ev.lat)) && Number.isFinite(Number(ev.lon))
-          ? `${Number(ev.lat).toFixed(4)}, ${Number(ev.lon).toFixed(4)}`
-          : "—"
-      ];
-      values.forEach((value, index) => {
-        const td = document.createElement("td");
-        if (index !== 2) td.className = "mono";
-        td.textContent = value;
-        tr.appendChild(td);
-      });
-      feed.prepend(tr);
+      const item = document.createElement("div");
+      item.className = "feed-item";
+
+      const eventType = safeText(ev.event_type);
+      const state = eventType === "cowrie.login.failed" ? "failed"
+        : eventType === "cowrie.login.success" ? "success" : "new";
+      const stateText = state === "failed" ? "Failed login"
+        : state === "success" ? "Successful login" : "New connection";
+
+      const line = document.createElement("div");
+      line.className = "feed-line";
+      const badge = document.createElement("span");
+      badge.className = `status ${state}`;
+      badge.textContent = stateText;
+      const time = document.createElement("span");
+      time.className = "mono muted";
+      time.textContent = safeText(ev.timestamp || "—");
+      line.append(badge, time);
+
+      const ip = document.createElement("div");
+      ip.className = "feed-ip mono";
+      ip.textContent = safeText(ev.ip);
+
+      const location = document.createElement("div");
+      location.className = "feed-detail";
+      location.textContent = `${safeText(ev.city) || "Unknown city"}, ${safeText(ev.country) || "Unknown country"} · source port ${safeText(ev.source_port) || "—"}`;
+
+      const credentials = document.createElement("div");
+      credentials.className = "feed-detail mono";
+      credentials.textContent = ev.username || ev.password
+        ? `Credentials: ${safeText(ev.username) || "(blank)"} / ${safeText(ev.password) || "(blank)"}`
+        : "Credentials: not attempted";
+
+      const message = document.createElement("div");
+      message.className = "feed-detail";
+      message.textContent = ev.command
+        ? `Command: ${safeText(ev.command)}`
+        : `Message: ${safeText(ev.message) || "Session opened"}`;
+
+      item.append(line, ip, location, credentials, message);
+      feed.prepend(item);
 
       while (feed.children.length > MAX_FEED_ROWS) {
         feed.removeChild(feed.lastChild);
@@ -203,6 +240,21 @@
       el("latestIp").textContent = safeText(ev.ip);
       el("latestGeo").textContent = `${safeText(ev.city) || "Unknown city"}, ${safeText(ev.country) || "Unknown country"}`;
       el("latestTime").textContent = safeText(ev.timestamp || "—");
+    }
+
+    function renderSimpleList(listId, emptyId, rows, valueKey) {
+      const list = el(listId);
+      list.innerHTML = "";
+      rows.slice(0, 10).forEach(row => {
+        const li = document.createElement("li");
+        li.append(document.createTextNode(`${safeText(row[valueKey])} `));
+        const count = document.createElement("span");
+        count.className = "muted";
+        count.textContent = `(${safeText(row.count)})`;
+        li.appendChild(count);
+        list.appendChild(li);
+      });
+      el(emptyId).style.display = rows.length ? "none" : "block";
     }
 
     function renderIpList() {
@@ -249,9 +301,9 @@
 
       el("statTotal").textContent = stats.total_attacks ?? "—";
       el("statUnique").textContent = stats.unique_ip_count ?? "—";
-
-      const top = (stats.top_countries && stats.top_countries[0]) ? stats.top_countries[0] : null;
-      el("statTopCountry").textContent = top ? `${top.country} (${top.count})` : "—";
+      el("statFailed").textContent = stats.failed_logins ?? 0;
+      el("statSuccess").textContent = stats.successful_logins ?? 0;
+      el("statCommands").textContent = stats.commands_observed ?? 0;
 
       // leaderboard
       const list = el("countries");
@@ -281,6 +333,8 @@
         topIps.appendChild(li);
       });
       el("topIpsEmpty").style.display = ipRows.length ? "none" : "block";
+      renderSimpleList("topUsernames", "usernamesEmpty", stats.top_usernames || [], "username");
+      renderSimpleList("topPasswords", "passwordsEmpty", stats.top_passwords || [], "password");
 
       // seed from snapshot events (newest first if backend sorts)
       const events = (eventsJson.events || []);
@@ -332,8 +386,10 @@
         el("generatedAt").textContent = stats.generated_at ? `generated ${stats.generated_at}` : "";
         el("lastAttack").textContent = stats.last_attack_timestamp || "—";
         el("statTotal").textContent = stats.total_attacks ?? "—";
-        const top = (stats.top_countries && stats.top_countries[0]) ? stats.top_countries[0] : null;
-        el("statTopCountry").textContent = top ? `${top.country} (${top.count})` : "—";
+        el("statUnique").textContent = stats.unique_ip_count ?? "—";
+        el("statFailed").textContent = stats.failed_logins ?? 0;
+        el("statSuccess").textContent = stats.successful_logins ?? 0;
+        el("statCommands").textContent = stats.commands_observed ?? 0;
 
         // update leaderboard too
         const list = el("countries");
@@ -363,6 +419,8 @@
           topIps.appendChild(li);
         });
         el("topIpsEmpty").style.display = ipRows.length ? "none" : "block";
+        renderSimpleList("topUsernames", "usernamesEmpty", stats.top_usernames || [], "username");
+        renderSimpleList("topPasswords", "passwordsEmpty", stats.top_passwords || [], "password");
       } catch (_) {}
     }
 
