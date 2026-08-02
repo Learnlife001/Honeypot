@@ -147,12 +147,15 @@ def compute_db_stats() -> Dict[str, Any]:
             SELECT COUNT(*) AS total_attacks,
                    COUNT(DISTINCT ip) AS unique_ip_count,
                    MAX(timestamp) AS last_attack_timestamp,
-                   SUM(CASE WHEN event_type = 'cowrie.login.failed' THEN 1 ELSE 0 END) AS failed_logins,
-                   SUM(CASE WHEN event_type = 'cowrie.login.success' THEN 1 ELSE 0 END) AS successful_logins,
                    SUM(CASE WHEN event_type = 'cowrie.session.connect' THEN 1 ELSE 0 END) AS connection_only,
                    SUM(CASE WHEN command IS NOT NULL AND command != '' THEN 1 ELSE 0 END) AS commands_observed
             FROM alerts
             """
+        ).fetchone()
+        login_summary = conn.execute(
+            """SELECT SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS failed_logins,
+                      SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS successful_logins
+               FROM login_attempts"""
         ).fetchone()
         countries = conn.execute(
             """SELECT COALESCE(country, 'Unknown') AS value, COUNT(*) AS count
@@ -164,16 +167,17 @@ def compute_db_stats() -> Dict[str, Any]:
         ).fetchall()
         usernames = conn.execute(
             """SELECT username AS value, COUNT(*) AS count
-               FROM alerts WHERE username IS NOT NULL AND username != ''
+               FROM login_attempts WHERE username IS NOT NULL AND username != ''
                GROUP BY username ORDER BY count DESC LIMIT 10"""
         ).fetchall()
         passwords = conn.execute(
             """SELECT password AS value, COUNT(*) AS count
-               FROM alerts WHERE password IS NOT NULL AND password != ''
+               FROM login_attempts WHERE password IS NOT NULL AND password != ''
                GROUP BY password ORDER BY count DESC LIMIT 10"""
         ).fetchall()
     return {
         **dict(summary),
+        **dict(login_summary),
         "top_countries": [{"country": row["value"], "count": row["count"]} for row in countries],
         "top_ips": [{"ip": row["value"], "count": row["count"]} for row in ips],
         "top_usernames": [{"username": row["value"], "count": row["count"]} for row in usernames],

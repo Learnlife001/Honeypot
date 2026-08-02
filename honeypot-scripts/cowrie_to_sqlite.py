@@ -106,6 +106,23 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS login_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_key TEXT UNIQUE,
+                session TEXT,
+                ip TEXT NOT NULL,
+                username TEXT,
+                password TEXT,
+                success INTEGER NOT NULL,
+                message TEXT,
+                timestamp TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_login_attempts_time ON login_attempts(timestamp)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip)")
         conn.commit()
 
 
@@ -197,6 +214,23 @@ def ingest_event(conn: sqlite3.Connection, event: dict[str, Any]) -> bool:
         return False
 
     if kind in {"cowrie.login.failed", "cowrie.login.success"} and session:
+        attempt_inserted = conn.execute(
+            """
+            INSERT OR IGNORE INTO login_attempts
+                (event_key, session, ip, username, password, success, message, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                event_key(event),
+                session,
+                ip,
+                event.get("username"),
+                event.get("password"),
+                int(kind == "cowrie.login.success"),
+                event.get("message"),
+                timestamp,
+            ),
+        ).rowcount
         updated = conn.execute(
             """
             UPDATE alerts
@@ -207,7 +241,7 @@ def ingest_event(conn: sqlite3.Connection, event: dict[str, Any]) -> bool:
             """,
             (kind, event.get("username"), event.get("password"), event.get("message"), session),
         ).rowcount
-        if updated:
+        if updated or attempt_inserted:
             return True
 
     if kind == "cowrie.command.input" and session:
@@ -275,6 +309,47 @@ def ingest_event(conn: sqlite3.Connection, event: dict[str, Any]) -> bool:
     return True
 
 
+def backfill_login_attempts() -> int:
+    """Import historical Cowrie login events once when the audit table is empty."""
+    if not LOG_FILE.exists():
+        return 0
+    with closing(connect_db()) as conn:
+        existing = conn.execute("SELECT COUNT(*) FROM login_attempts").fetchone()[0]
+        if existing:
+            return 0
+        inserted = 0
+        with LOG_FILE.open("r", encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                kind = str(event.get("eventid") or "")
+                ip = str(event.get("src_ip") or "")
+                timestamp = str(event.get("timestamp") or "")
+                if kind not in {"cowrie.login.failed", "cowrie.login.success"} or not ip or not timestamp:
+                    continue
+                inserted += conn.execute(
+                    """
+                    INSERT OR IGNORE INTO login_attempts
+                        (event_key, session, ip, username, password, success, message, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        event_key(event),
+                        event.get("session"),
+                        ip,
+                        event.get("username"),
+                        event.get("password"),
+                        int(kind == "cowrie.login.success"),
+                        event.get("message"),
+                        timestamp,
+                    ),
+                ).rowcount
+        conn.commit()
+    return inserted
+
+
 def load_state() -> dict[str, int]:
     try:
         value = json.loads(STATE_FILE.read_text(encoding="utf-8"))
@@ -315,6 +390,9 @@ def process_available() -> int:
 
 def main() -> None:
     init_db()
+    backfilled = backfill_login_attempts()
+    if backfilled:
+        print(f"Backfilled {backfilled} historical login attempt(s)", flush=True)
     print(f"Watching {LOG_FILE} -> {DB_PATH}", flush=True)
     while True:
         count = process_available()

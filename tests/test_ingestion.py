@@ -75,10 +75,14 @@ class CowrieIngestionTests(unittest.TestCase):
             rows = conn.execute(
                 "SELECT event_type, username, password, command, message FROM alerts"
             ).fetchall()
+            attempts = conn.execute(
+                "SELECT username, password, success FROM login_attempts"
+            ).fetchall()
         self.assertEqual(
             rows,
             [("cowrie.login.failed", "root", "test", "uname -a", "Command found: uname -a")],
         )
+        self.assertEqual(attempts, [("root", "test", 0)])
 
 
 if __name__ == "__main__":
