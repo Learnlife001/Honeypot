@@ -25,7 +25,7 @@ ALLOWED_CORS_ORIGINS = tuple(
     origin.strip()
     for origin in os.getenv(
         "CORS_ALLOWED_ORIGINS",
-        "https://honeypot-dashboard-learnlife001s-projects.vercel.app",
+        "https://honeypot-dashboard-learnlife001s-projects.vercel.app,https://honeypot.greglabs.nl",
     ).split(",")
     if origin.strip()
 )
