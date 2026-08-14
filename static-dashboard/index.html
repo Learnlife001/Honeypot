@@ -32,8 +32,8 @@
 <body>
   <main>
     <header>
-      <div><p class="eyebrow">Honeypot telemetry</p><h1>Honeypot Dashboard</h1><p class="subtitle">Historical Cowrie snapshot — deployable as a static site.</p></div>
-      <span class="badge">Snapshot data · not live</span>
+      <div><p class="eyebrow">Honeypot telemetry</p><h1>Honeypot Dashboard</h1><p class="subtitle">Live backend telemetry with a safe historical fallback.</p></div>
+      <span class="badge" id="sourceBadge">Connecting to live telemetry…</span>
     </header>
     <section class="stats">
       <div class="card"><div class="label">Recorded attempts</div><div class="value" id="attempts">—</div></div>
@@ -45,7 +45,7 @@
       <article class="panel"><div class="panel-head"><div><strong>Global attack origins</strong><small>Each marker represents a recorded source IP location.</small></div></div><div class="map-wrap"><div class="map-note" id="mapNote">Loading locations…</div><div id="map"></div></div></article>
       <aside class="panel"><div class="panel-head"><div><strong>Top countries</strong><small>By recorded attempt count</small></div></div><ol class="list" id="countryList"></ol></aside>
     </section>
-    <section class="panel feed"><div class="panel-head"><div><strong>Recent recorded sources</strong><small>From the bundled historical snapshot</small></div></div><div style="overflow:auto"><table><thead><tr><th>IP address</th><th>Location</th><th>Coordinates</th></tr></thead><tbody id="feed"></tbody></table></div></section>
+    <section class="panel feed"><div class="panel-head"><div><strong>Recent recorded sources</strong><small id="feedCaption">Loading safe public telemetry</small></div></div><div style="overflow:auto"><table><thead><tr><th>IP address</th><th>Location</th><th>Coordinates</th></tr></thead><tbody id="feed"></tbody></table></div></section>
   </main>
   <script>
     const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
@@ -53,17 +53,37 @@
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap contributors" }).addTo(map);
     const markers = L.layerGroup().addTo(map);
 
-    async function loadDashboard() {
-      const response = await fetch("./cowrie_alerts.json");
-      if (!response.ok) throw new Error("Unable to load bundled alert data");
-      const events = (await response.json()).filter(event => event && event.ip);
+    const API_BASE = "https://35-208-243-179.sslip.io";
+    let currentEvents = [];
+
+    async function getDashboardData() {
+      try {
+        const [eventsResponse, statsResponse] = await Promise.all([
+          fetch(`${API_BASE}/events?limit=2000`),
+          fetch(`${API_BASE}/stats`),
+        ]);
+        if (!eventsResponse.ok || !statsResponse.ok) throw new Error("Live API unavailable");
+        return { events: (await eventsResponse.json()).events || [], stats: await statsResponse.json(), live: true };
+      } catch (_) {
+        const response = await fetch("./cowrie_alerts.json");
+        if (!response.ok) throw new Error("Unable to load dashboard data");
+        return { events: await response.json(), stats: null, live: false };
+      }
+    }
+
+    function renderDashboard(payload) {
+      const events = payload.events.filter(event => event && event.ip);
+      currentEvents = events;
       const withCoordinates = events.filter(event => Number.isFinite(Number(event.lat)) && Number.isFinite(Number(event.lon)));
       const countryCounts = new Map();
       events.forEach(event => countryCounts.set(event.country || "Unknown", (countryCounts.get(event.country || "Unknown") || 0) + 1));
-      document.getElementById("attempts").textContent = events.length.toLocaleString();
-      document.getElementById("ips").textContent = new Set(events.map(event => event.ip)).size.toLocaleString();
+      document.getElementById("attempts").textContent = (payload.stats?.total_attacks ?? events.length).toLocaleString();
+      document.getElementById("ips").textContent = (payload.stats?.unique_ip_count ?? new Set(events.map(event => event.ip)).size).toLocaleString();
       document.getElementById("countries").textContent = countryCounts.size.toLocaleString();
       document.getElementById("locations").textContent = withCoordinates.length.toLocaleString();
+      document.getElementById("sourceBadge").textContent = payload.live ? "Live telemetry · read-only" : "Historical fallback · not live";
+      document.getElementById("feedCaption").textContent = payload.live ? "Safe fields from the live backend" : "Bundled historical snapshot";
+      markers.clearLayers();
       const bounds = L.latLngBounds([]);
       withCoordinates.forEach(event => {
         const lat = Number(event.lat), lon = Number(event.lon);
@@ -76,7 +96,20 @@
       document.getElementById("countryList").replaceChildren(...[...countryCounts.entries()].sort((a,b) => b[1] - a[1]).slice(0, 10).map(([country, count]) => { const item = document.createElement("li"); item.append(document.createTextNode(country)); const value = document.createElement("strong"); value.textContent = count.toLocaleString(); item.append(value); return item; }));
       document.getElementById("feed").replaceChildren(...events.slice(0, 30).map(event => { const row = document.createElement("tr"); [event.ip, `${event.country || "Unknown"}, ${event.city || "Unknown"}`, Number.isFinite(Number(event.lat)) ? `${Number(event.lat).toFixed(4)}, ${Number(event.lon).toFixed(4)}` : "Unknown"].forEach((value, index) => { const cell = document.createElement("td"); cell.textContent = value; if (index !== 1) cell.className = "mono"; row.append(cell); }); return row; }));
     }
-    loadDashboard().catch(error => { document.getElementById("mapNote").textContent = error.message; });
+
+    function startLiveStream() {
+      const stream = new EventSource(`${API_BASE}/stream`);
+      stream.addEventListener("attack", message => {
+        try {
+          const event = JSON.parse(message.data);
+          const known = new Set(currentEvents.map(item => item.id || `${item.ip}:${item.timestamp}`));
+          const id = event.id || `${event.ip}:${event.timestamp}`;
+          if (!known.has(id)) renderDashboard({ events: [event, ...currentEvents].slice(0, 2000), stats: null, live: true });
+        } catch (_) {}
+      });
+    }
+
+    getDashboardData().then(payload => { renderDashboard(payload); if (payload.live) startLiveStream(); }).catch(error => { document.getElementById("mapNote").textContent = error.message; });
   </script>
 </body>
 </html>

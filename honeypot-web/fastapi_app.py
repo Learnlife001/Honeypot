@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -20,6 +21,17 @@ ALERTS_PATH = HERE / "cowrie_alerts.json"
 DB_PATH = Path(os.getenv("ALERTS_DB_PATH", HERE / "alerts.db"))
 STATIC_DIR = HERE / "static"
 TEMPLATES_DIR = HERE / "templates"
+ALLOWED_CORS_ORIGINS = tuple(
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ALLOWED_ORIGINS",
+        "https://honeypot-dashboard-learnlife001s-projects.vercel.app",
+    ).split(",")
+    if origin.strip()
+)
+PUBLIC_EVENT_FIELDS = frozenset({
+    "id", "event_type", "ip", "country", "city", "timestamp", "lat", "lon", "severity",
+})
 
 
 def _utc_now_iso() -> str:
@@ -92,6 +104,11 @@ def load_events() -> List[Dict[str, Any]]:
     if any(isinstance(e.get("timestamp"), str) for e in events):
         events.sort(key=key, reverse=True)
     return events
+
+
+def public_event(event: Dict[str, Any]) -> Dict[str, Any]:
+    """Return only fields safe to expose from a public dashboard API."""
+    return {key: value for key, value in event.items() if key in PUBLIC_EVENT_FIELDS}
 
 
 def event_id(ev: Dict[str, Any]) -> Tuple[Any, ...]:
@@ -187,6 +204,14 @@ def compute_db_stats() -> Dict[str, Any]:
 
 
 app = FastAPI(title="Honeypot Live Dashboard API", version="1.0.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=list(ALLOWED_CORS_ORIGINS),
+    allow_credentials=False,
+    allow_methods=["GET"],
+    allow_headers=["Accept", "Content-Type"],
+    max_age=600,
+)
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 if STATIC_DIR.exists():
@@ -205,14 +230,18 @@ def get_events(limit: int = 200) -> JSONResponse:
         limit = 1
     if limit > 2000:
         limit = 2000
-    return JSONResponse(content={"events": events[:limit], "count": min(len(events), limit)})
+    public_events = [public_event(event) for event in events[:limit]]
+    return JSONResponse(content={"events": public_events, "count": len(public_events)})
 
 
 @app.get("/stats")
 def get_stats() -> JSONResponse:
     if DB_PATH.exists():
         try:
-            return JSONResponse(content=compute_db_stats())
+            stats = compute_db_stats()
+            stats.pop("top_usernames", None)
+            stats.pop("top_passwords", None)
+            return JSONResponse(content=stats)
         except sqlite3.Error:
             pass
     return JSONResponse(content=compute_stats(load_events()))
@@ -280,7 +309,7 @@ async def stream() -> StreamingResponse:
                     # Emit in file order (best-effort recent-first if timestamps exist).
                     for ev in events:
                         if event_id(ev) in new_ids:
-                            yield f"event: attack\ndata: {json.dumps(ev)}\n\n".encode("utf-8")
+                            yield f"event: attack\ndata: {json.dumps(public_event(ev))}\n\n".encode("utf-8")
                 else:
                     yield f"event: keepalive\ndata: {json.dumps({'at': _utc_now_iso()})}\n\n".encode("utf-8")
             else:
