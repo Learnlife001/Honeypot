@@ -9,8 +9,6 @@ A production-style cloud security project that captures real internet SSH activi
 
 **Public dashboard:** [https://honeypot.greglabs.nl/](https://honeypot.greglabs.nl/)
 
-**Operator dashboard (administrator view):** [https://35-208-243-179.sslip.io/](https://35-208-243-179.sslip.io/) — this view should be access-restricted in a production deployment.
-
 > The dashboard displays genuine connection attempts received by Cowrie. A successful Cowrie login means an attacker entered the simulated honeypot environment; it does **not** mean the Google Cloud host was compromised.
 
 ## Project highlights
