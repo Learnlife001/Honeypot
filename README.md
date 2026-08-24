@@ -7,7 +7,9 @@
 
 A production-style cloud security project that captures real internet SSH activity with [Cowrie](https://github.com/cowrie/cowrie), enriches the telemetry with geographic context, persists it in SQLite, and streams new events to a live SOC dashboard.
 
-**Live dashboard:** [https://35-208-243-179.sslip.io/](https://35-208-243-179.sslip.io/)
+**Public dashboard:** [https://honeypot.greglabs.nl/](https://honeypot.greglabs.nl/)
+
+**Operator dashboard (administrator view):** [https://35-208-243-179.sslip.io/](https://35-208-243-179.sslip.io/) — this view should be access-restricted in a production deployment.
 
 > The dashboard displays genuine connection attempts received by Cowrie. A successful Cowrie login means an attacker entered the simulated honeypot environment; it does **not** mean the Google Cloud host was compromised.
 
@@ -60,13 +62,26 @@ Attacker-supplied data is untrusted. The dashboard renders it as text, and real 
 
 ## Dashboard and API
 
+### Public dashboard vs. operator dashboard
+
+The project intentionally provides two different dashboard views:
+
+| View | Audience | Data shown |
+| --- | --- | --- |
+| [Public dashboard](https://honeypot.greglabs.nl/) | Portfolio visitors and observers | Live metrics, geographic source map, country/IP trends, event categories, and a redacted connection feed. |
+| Operator dashboard | The system administrator | Full operational telemetry, including attempted credential trends and command/session context. It must be access-restricted in a production deployment. |
+
+The public Vercel frontend reads the live API with an exact CORS allow-list and has a bundled historical fallback. It deliberately does **not** show attempted usernames, passwords, entered commands, session identifiers, or raw messages. Attempted credentials may contain reused or leaked personal data, so they are operational intelligence for the administrator rather than public content.
+
+The public dashboard uses a bright, accessible visual treatment and includes a custom tab icon. It is still live: new redacted Cowrie events are received through the SSE stream when the backend is available.
+
 | Endpoint | Purpose |
 | --- | --- |
-| `/` | Live SOC operations dashboard |
+| `/` | Live operator SOC dashboard |
 | `/map` | Dashboard-compatible map route |
-| `/events` | Recent normalized Cowrie events |
-| `/stats` | Aggregated session, authentication, source, and credential statistics |
-| `/stream` | SSE stream containing newly persisted events |
+| `/events` | Recent normalized events, redacted for the public dashboard |
+| `/stats` | Aggregated session, authentication, and source statistics; public responses exclude credential leaderboards |
+| `/stream` | SSE stream containing newly persisted redacted events |
 | `/health` | Database, ingestion-file, and application health information |
 
 The dashboard includes:
@@ -105,6 +120,7 @@ The honeypot must remain isolated from production networks and sensitive workloa
 |-- honeypot-web/
 |   |-- fastapi_app.py            # API, statistics, health, and SSE
 |   `-- templates/dashboard.html  # Live SOC dashboard
+|-- static-dashboard/             # Public Vercel frontend and tab icon
 |-- tests/
 |   |-- test_dashboard.py
 |   `-- test_ingestion.py
