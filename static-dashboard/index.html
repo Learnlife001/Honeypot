@@ -1,115 +1,28 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Honeypot Dashboard</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
-  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#f6efe2">
+  <title>Honeypot Dashboard</title><link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"><script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
-    :root { --bg: rgb(8, 12, 27); --panel: rgb(17, 24, 51); --text: rgb(238, 242, 255); --muted: rgb(169, 180, 208); --accent: rgb(139, 92, 246); --border: rgba(255,255,255,.12); }
-    * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 5% 0%, rgba(124,58,237,.28), transparent 34%), var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; }
-    main { max-width: 1360px; margin: auto; padding: 28px 20px 40px; }
-    header { display: flex; justify-content: space-between; gap: 20px; align-items: start; margin-bottom: 22px; }
-    .eyebrow { margin: 0 0 6px; color: rgb(196,181,253); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; font-weight: 800; }
-    h1 { font-size: clamp(24px, 4vw, 38px); margin: 0; letter-spacing: -.04em; }
-    .subtitle, .muted { color: var(--muted); }
-    .badge { padding: 8px 11px; border: 1px solid rgba(251,191,36,.4); color: rgb(253,230,138); background: rgba(120,53,15,.25); border-radius: 999px; white-space: nowrap; }
-    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
-    .card, .panel { border: 1px solid var(--border); background: rgba(17,24,51,.78); border-radius: 14px; box-shadow: 0 18px 45px rgba(0,0,0,.2); }
-    .card { padding: 15px; } .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; } .value { margin-top: 6px; font-size: 26px; font-weight: 800; }
-    .layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(290px, .65fr); gap: 14px; }
-    .panel-head { display: flex; justify-content: space-between; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
-    .panel-head strong { display: block; } .panel-head small { color: var(--muted); }
-    .map-wrap { position: relative; padding: 12px; } #map { height: 530px; border-radius: 10px; background: rgb(13, 18, 36); }
-    .map-note { position: absolute; z-index: 500; left: 27px; top: 27px; padding: 8px 10px; border-radius: 8px; background: rgba(8,12,27,.88); border: 1px solid var(--border); color: var(--muted); font-size: 12px; }
-    .list { list-style: none; padding: 4px 16px 14px; margin: 0; } .list li { display: flex; justify-content: space-between; gap: 8px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.08); } .list li:last-child { border: 0; }
-    .feed { margin-top: 14px; } table { width: 100%; border-collapse: collapse; } th, td { padding: 10px 16px; text-align: left; border-bottom: 1px solid rgba(255,255,255,.08); } th { color: var(--muted); font-size: 11px; text-transform: uppercase; } .mono { font-family: ui-monospace, Consolas, monospace; }
-    @media (max-width: 900px) { .stats { grid-template-columns: repeat(2, 1fr); } .layout { grid-template-columns: 1fr; } #map { height: 440px; } header { display: block; } .badge { display: inline-block; margin-top: 14px; } }
+    :root{--ink:#17251e;--muted:#65726a;--paper:#fffdf8;--cream:#f6efe2;--line:#d9ded3;--coral:#d95c3b;--orange:#f19b4d;--mint:#28795a;--shadow:0 18px 45px rgba(39,53,44,.09)}*{box-sizing:border-box}html{background:var(--cream)}body{margin:0;color:var(--ink);background:radial-gradient(circle at 90% -10%,#f9d7a8 0,transparent 28rem),linear-gradient(140deg,#fbf8f0 0%,var(--cream) 62%,#e7f0df 160%);font-family:Manrope,sans-serif}body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.34;background-image:linear-gradient(rgba(34,52,42,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(34,52,42,.035) 1px,transparent 1px);background-size:24px 24px;mask-image:linear-gradient(#000,transparent 65%)}main{position:relative;max-width:1510px;margin:auto;padding:30px 22px 48px}.topbar{display:flex;align-items:center;justify-content:space-between;gap:22px;margin-bottom:25px}.brand{display:flex;align-items:center;gap:13px}.mark{display:grid;place-items:center;width:46px;height:46px;border-radius:14px;background:var(--ink);color:#fffaf0;box-shadow:inset 0 -3px 0 rgba(255,255,255,.16);font-family:Fraunces,serif;font-size:19px}.eyebrow{color:var(--coral);font-size:10px;font-weight:800;letter-spacing:.18em;text-transform:uppercase}.brand h1{margin:1px 0 0;font-family:Fraunces,serif;font-size:25px;letter-spacing:-.035em}.subtitle,.muted{color:var(--muted)}.subtitle{font-size:12px}.toolbar{display:flex;gap:8px;align-items:center}.button,.connection{min-height:38px;border-radius:999px;border:1px solid var(--line);background:rgba(255,253,248,.82);padding:0 13px;font:600 12px Manrope,sans-serif;color:var(--ink)}.button{cursor:pointer}.button:hover{background:#fff;border-color:#a8b3a5}.connection{display:flex;align-items:center;gap:8px;color:var(--muted)}.dot{width:8px;height:8px;border-radius:50%;background:#bf5640}.dot.live{background:var(--mint);box-shadow:0 0 0 4px rgba(40,121,90,.12)}.metrics{display:grid;grid-template-columns:repeat(6,1fr);gap:11px;margin-bottom:14px}.metric,.panel{background:rgba(255,253,248,.9);border:1px solid rgba(109,123,109,.25);box-shadow:var(--shadow)}.metric{min-width:0;padding:15px 16px;border-radius:15px;overflow:hidden;position:relative}.metric:after{content:"";position:absolute;left:16px;bottom:0;width:36px;height:3px;border-radius:99px;background:var(--coral)}.metric:nth-child(2):after,.metric:nth-child(5):after{background:var(--mint)}.metric:nth-child(3):after{background:var(--orange)}.k{color:var(--muted);font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.v{margin-top:9px;font:700 24px/1 Fraunces,serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.workspace{display:grid;grid-template-columns:minmax(0,1.68fr) minmax(330px,.75fr);gap:14px}.panel{border-radius:18px;overflow:hidden}.focus{border-color:rgba(217,92,59,.44)}.panel-hd{display:flex;justify-content:space-between;align-items:start;gap:14px;padding:15px 17px 13px;border-bottom:1px solid var(--line)}.panel-hd h2{margin:0;font-family:Fraunces,serif;font-size:16px;letter-spacing:-.02em}.panel-hd small{display:block;margin-top:3px;color:var(--muted);font-size:11px}.map-wrap{position:relative;padding:12px}#map{height:548px;border-radius:11px;background:#e7efea}.map-note{position:absolute;z-index:500;top:27px;left:27px;max-width:240px;padding:9px 11px;border:1px solid rgba(23,37,30,.18);border-radius:10px;background:rgba(255,253,248,.91);backdrop-filter:blur(8px);font-size:11px;color:var(--muted)}.map-note b{display:block;margin-bottom:2px;color:var(--ink);font-size:12px}.side-stack{display:grid;grid-template-rows:auto minmax(0,1fr);gap:14px}.latest{padding:18px;background:linear-gradient(125deg,#f8ddba,#fff9ef 54%,#e0edda)}.latest-label{color:var(--mint);font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}.latest-ip{margin:8px 0 6px;font:700 25px/1.05 'DM Mono',monospace;letter-spacing:-.07em}.latest-meta{display:flex;flex-wrap:wrap;gap:5px 12px;color:var(--muted);font-size:11px}.feed-scroll{max-height:430px;overflow:auto}.feed-item{padding:12px 15px;border-top:1px solid var(--line)}.feed-item:hover{background:#fbf4e9}.feed-line{display:flex;justify-content:space-between;gap:10px;align-items:center}.feed-ip{margin:7px 0 3px;font:600 12px 'DM Mono',monospace}.feed-detail{color:var(--muted);font-size:11px}.status{display:inline-flex;padding:3px 7px;border-radius:999px;background:#e9efe5;color:var(--mint);font-size:9px;font-weight:800;letter-spacing:.07em;text-transform:uppercase}.status.failed{color:#9f4837;background:#fae4d9}.status.success{color:#26634c;background:#ddefdf}.bottom{display:grid;grid-template-columns:1.05fr .9fr 1fr;gap:14px;margin-top:14px}.panel-bd{padding:14px 16px}.cols2{display:grid;grid-template-columns:1fr 1fr;gap:18px}.list-title{color:var(--coral);font-size:10px;font-weight:800;letter-spacing:.13em;text-transform:uppercase}.rank-list{margin:8px 0 0;padding-left:22px}.rank-list li{padding:6px 0;border-bottom:1px solid var(--line);font-size:12px}.rank-list li:last-child{border-bottom:0}.rank-list span{color:var(--muted)}.mono{font-family:'DM Mono',monospace}.ip-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;list-style:none;padding:0;margin:0}.ip-grid li{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:#fbf8f1;font:11px 'DM Mono',monospace}.event-bars{display:grid;gap:10px;margin-top:10px}.event-row{display:grid;grid-template-columns:minmax(0,1fr) 42px;gap:9px;align-items:center;font-size:12px}.bar{height:8px;overflow:hidden;border-radius:99px;background:#eee6d8}.bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--orange),var(--coral))}.event-row strong{text-align:right;font:500 11px 'DM Mono',monospace;color:var(--muted)}.empty{color:var(--muted);font-size:12px}.leaflet-popup-content{font-family:Manrope,sans-serif;color:var(--ink)}.leaflet-popup-content .mono{font-size:11px}.leaflet-container a{color:var(--mint)}@media(max-width:1120px){.metrics{grid-template-columns:repeat(3,1fr)}.workspace,.bottom{grid-template-columns:1fr}.side-stack{grid-template-columns:1fr 1fr;grid-template-rows:1fr}.feed-scroll{max-height:350px}}@media(max-width:680px){main{padding:18px 13px 34px}.topbar{align-items:flex-start;flex-direction:column;margin-bottom:18px}.metrics{grid-template-columns:1fr 1fr}.v{font-size:20px}.side-stack{display:block}.side-stack>*+*{margin-top:14px}#map{height:390px}.cols2{grid-template-columns:1fr}.toolbar{width:100%;justify-content:space-between}.latest-ip{font-size:21px}}
   </style>
 </head>
-<body>
-  <main>
-    <header>
-      <div><p class="eyebrow">Honeypot telemetry</p><h1>Honeypot Dashboard</h1><p class="subtitle">Live backend telemetry with a safe historical fallback.</p></div>
-      <span class="badge" id="sourceBadge">Connecting to live telemetry…</span>
-    </header>
-    <section class="stats">
-      <div class="card"><div class="label">Recorded attempts</div><div class="value" id="attempts">—</div></div>
-      <div class="card"><div class="label">Unique source IPs</div><div class="value" id="ips">—</div></div>
-      <div class="card"><div class="label">Countries</div><div class="value" id="countries">—</div></div>
-      <div class="card"><div class="label">Mapped locations</div><div class="value" id="locations">—</div></div>
-    </section>
-    <section class="layout">
-      <article class="panel"><div class="panel-head"><div><strong>Global attack origins</strong><small>Each marker represents a recorded source IP location.</small></div></div><div class="map-wrap"><div class="map-note" id="mapNote">Loading locations…</div><div id="map"></div></div></article>
-      <aside class="panel"><div class="panel-head"><div><strong>Top countries</strong><small>By recorded attempt count</small></div></div><ol class="list" id="countryList"></ol></aside>
-    </section>
-    <section class="panel feed"><div class="panel-head"><div><strong>Recent recorded sources</strong><small id="feedCaption">Loading safe public telemetry</small></div></div><div style="overflow:auto"><table><thead><tr><th>IP address</th><th>Location</th><th>Coordinates</th></tr></thead><tbody id="feed"></tbody></table></div></section>
-  </main>
-  <script>
-    const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
-    const map = L.map("map", { worldCopyJump: true }).setView([20, 0], 2);
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap contributors" }).addTo(map);
-    const markers = L.layerGroup().addTo(map);
-
-    const API_BASE = "https://35-208-243-179.sslip.io";
-    let currentEvents = [];
-
-    async function getDashboardData() {
-      try {
-        const [eventsResponse, statsResponse] = await Promise.all([
-          fetch(`${API_BASE}/events?limit=2000`),
-          fetch(`${API_BASE}/stats`),
-        ]);
-        if (!eventsResponse.ok || !statsResponse.ok) throw new Error("Live API unavailable");
-        return { events: (await eventsResponse.json()).events || [], stats: await statsResponse.json(), live: true };
-      } catch (_) {
-        const response = await fetch("./cowrie_alerts.json");
-        if (!response.ok) throw new Error("Unable to load dashboard data");
-        return { events: await response.json(), stats: null, live: false };
-      }
-    }
-
-    function renderDashboard(payload) {
-      const events = payload.events.filter(event => event && event.ip);
-      currentEvents = events;
-      const withCoordinates = events.filter(event => Number.isFinite(Number(event.lat)) && Number.isFinite(Number(event.lon)));
-      const countryCounts = new Map();
-      events.forEach(event => countryCounts.set(event.country || "Unknown", (countryCounts.get(event.country || "Unknown") || 0) + 1));
-      document.getElementById("attempts").textContent = (payload.stats?.total_attacks ?? events.length).toLocaleString();
-      document.getElementById("ips").textContent = (payload.stats?.unique_ip_count ?? new Set(events.map(event => event.ip)).size).toLocaleString();
-      document.getElementById("countries").textContent = countryCounts.size.toLocaleString();
-      document.getElementById("locations").textContent = withCoordinates.length.toLocaleString();
-      document.getElementById("sourceBadge").textContent = payload.live ? "Live telemetry · read-only" : "Historical fallback · not live";
-      document.getElementById("feedCaption").textContent = payload.live ? "Safe fields from the live backend" : "Bundled historical snapshot";
-      markers.clearLayers();
-      const bounds = L.latLngBounds([]);
-      withCoordinates.forEach(event => {
-        const lat = Number(event.lat), lon = Number(event.lon);
-        const popup = `<strong>${escapeHtml(event.ip)}</strong><br>${escapeHtml(event.city || "Unknown")}, ${escapeHtml(event.country || "Unknown")}<br><span class="mono">${lat.toFixed(4)}, ${lon.toFixed(4)}</span>`;
-        L.circleMarker([lat, lon], { radius: 6, color: "rgb(254,215,170)", fillColor: "rgb(249,115,22)", fillOpacity: .78, weight: 1 }).bindPopup(popup).addTo(markers);
-        bounds.extend([lat, lon]);
-      });
-      if (bounds.isValid()) map.fitBounds(bounds, { padding: [32, 32], maxZoom: 4 });
-      document.getElementById("mapNote").textContent = `${withCoordinates.length.toLocaleString()} geolocated source IPs`;
-      document.getElementById("countryList").replaceChildren(...[...countryCounts.entries()].sort((a,b) => b[1] - a[1]).slice(0, 10).map(([country, count]) => { const item = document.createElement("li"); item.append(document.createTextNode(country)); const value = document.createElement("strong"); value.textContent = count.toLocaleString(); item.append(value); return item; }));
-      document.getElementById("feed").replaceChildren(...events.slice(0, 30).map(event => { const row = document.createElement("tr"); [event.ip, `${event.country || "Unknown"}, ${event.city || "Unknown"}`, Number.isFinite(Number(event.lat)) ? `${Number(event.lat).toFixed(4)}, ${Number(event.lon).toFixed(4)}` : "Unknown"].forEach((value, index) => { const cell = document.createElement("td"); cell.textContent = value; if (index !== 1) cell.className = "mono"; row.append(cell); }); return row; }));
-    }
-
-    function startLiveStream() {
-      const stream = new EventSource(`${API_BASE}/stream`);
-      stream.addEventListener("attack", message => {
-        try {
-          const event = JSON.parse(message.data);
-          const known = new Set(currentEvents.map(item => item.id || `${item.ip}:${item.timestamp}`));
-          const id = event.id || `${event.ip}:${event.timestamp}`;
-          if (!known.has(id)) renderDashboard({ events: [event, ...currentEvents].slice(0, 2000), stats: null, live: true });
-        } catch (_) {}
-      });
-    }
-
-    getDashboardData().then(payload => { renderDashboard(payload); if (payload.live) startLiveStream(); }).catch(error => { document.getElementById("mapNote").textContent = error.message; });
-  </script>
-</body>
-</html>
+<body><main>
+  <header class="topbar"><div class="brand"><div class="mark">HX</div><div><div class="eyebrow">Honeypot intelligence</div><h1>SSH Threat Operations</h1><div class="subtitle">Public, redacted telemetry from the Cowrie sensor</div></div></div><div class="toolbar"><button class="button" id="refresh">Refresh</button><span class="connection"><i class="dot" id="dot"></i><span id="connection">Connecting</span></span></div></header>
+  <section class="metrics"><div class="metric"><div class="k">SSH sessions</div><div class="v" id="total">—</div></div><div class="metric"><div class="k">Unique source IPs</div><div class="v" id="unique">—</div></div><div class="metric"><div class="k">Failed logins</div><div class="v" id="failed">—</div></div><div class="metric"><div class="k">Successful logins</div><div class="v" id="success">—</div></div><div class="metric"><div class="k">Commands observed</div><div class="v" id="commands">—</div></div><div class="metric"><div class="k">Last connection</div><div class="v mono" id="last">—</div></div></section>
+  <section class="workspace"><article class="panel focus"><div class="panel-hd"><div><h2>Global connection map</h2><small>Each marker is a geolocated source address.</small></div><small id="mapCount">Loading locations…</small></div><div class="map-wrap"><div class="map-note"><b id="mapStatus">Connecting to telemetry</b><span id="mapDetail">Fetching live source locations…</span></div><div id="map"></div></div></article><aside class="side-stack"><article class="panel latest"><div class="latest-label">Latest connection</div><div class="latest-ip" id="latestIp">Waiting…</div><div class="latest-meta"><span id="latestPlace">No location yet</span><span class="mono" id="latestTime">—</span></div></article><article class="panel"><div class="panel-hd"><div><h2>Live connection feed</h2><small>Newest safe, public events first</small></div><small><span id="loaded">—</span> loaded</small></div><div class="feed-scroll" id="feed"></div></article></aside></section>
+  <section class="bottom"><article class="panel"><div class="panel-hd"><div><h2>Threat concentration</h2><small>Connection volume by geographic origin</small></div></div><div class="panel-bd cols2"><div><div class="list-title">Top countries</div><ol class="rank-list" id="countries"></ol></div><div><div class="list-title">Top source IPs</div><ol class="rank-list mono" id="topIps"></ol></div></div></article><article class="panel"><div class="panel-hd"><div><h2>Event signals</h2><small>Event categories in the current window</small></div></div><div class="panel-bd"><div class="event-bars" id="eventTypes"></div></div></article><article class="panel"><div class="panel-hd"><div><h2>Observed source addresses</h2><small>Unique IPs in the loaded telemetry window</small></div></div><div class="panel-bd"><ul class="ip-grid" id="ipList"></ul></div></article></section>
+</main>
+<script>
+const API_BASE="https://35-208-243-179.sslip.io", MAX_EVENTS=2000, MAX_FEED=28, $=id=>document.getElementById(id), valid=v=>Number.isFinite(Number(v)); let events=[],stats=null,map,markers,bounds,stream;
+const count=(list,key)=>list.reduce((m,e)=>{const v=key(e)||"Unknown";m.set(v,(m.get(v)||0)+1);return m},new Map()),rank=m=>[...m].sort((a,b)=>b[1]-a[1]),id=e=>e.id||`${e.ip}|${e.timestamp}|${e.event_type}`,time=v=>{const d=new Date(v);return v&&!Number.isNaN(d)?d.toLocaleString():v||"—"};
+function state(e){return e.event_type==="cowrie.login.failed"?["Failed login","failed"]:e.event_type==="cowrie.login.success"?["Successful login","success"]:["New connection","new"]}function connected(ok){$("dot").classList.toggle("live",ok);$("connection").textContent=ok?"Live telemetry":"Historical snapshot"}function metric(k,v){$(k).textContent=v==null?"—":typeof v==="number"?v.toLocaleString():v}function list(k,rows){const t=$(k);t.replaceChildren(...rows.slice(0,10).map(([n,c])=>{const li=document.createElement("li"),s=document.createElement("span");li.append(`${n} `);s.textContent=`(${c.toLocaleString()})`;li.append(s);return li}));if(!rows.length)t.innerHTML='<li class="empty">No data yet.</li>'}
+function render(){const all=events.filter(e=>e&&e.ip),located=all.filter(e=>valid(e.lat)&&valid(e.lon)),countries=rank(count(all,e=>e.country)),ips=rank(count(all,e=>e.ip)),types=rank(count(all,e=>e.event_type));metric("total",stats?.total_attacks??all.length);metric("unique",stats?.unique_ip_count??new Set(all.map(e=>e.ip)).size);metric("failed",stats?.failed_logins??types.find(([k])=>k==="cowrie.login.failed")?.[1]??0);metric("success",stats?.successful_logins??types.find(([k])=>k==="cowrie.login.success")?.[1]??0);metric("commands",stats?.commands_observed??0);metric("last",time(stats?.last_attack_timestamp||all[0]?.timestamp));const latest=all[0];$("latestIp").textContent=latest?.ip||"Waiting…";$("latestPlace").textContent=latest?`${latest.city||"Unknown city"}, ${latest.country||"Unknown country"}`:"No location yet";$("latestTime").textContent=time(latest?.timestamp);$("loaded").textContent=all.length.toLocaleString();list("countries",stats?.top_countries?.length?stats.top_countries.map(r=>[r.country,r.count]):countries);list("topIps",stats?.top_ips?.length?stats.top_ips.map(r=>[r.ip,r.count]):ips);
+ const sources=$("ipList");sources.replaceChildren(...ips.slice(0,28).map(([ip])=>{const li=document.createElement("li");li.textContent=ip;return li}));if(!ips.length)sources.innerHTML='<li class="empty">No source addresses yet.</li>';const typeBox=$("eventTypes"),max=Math.max(...types.map(([,c])=>c),1);typeBox.replaceChildren(...types.slice(0,7).map(([n,c])=>{const row=document.createElement("div"),a=document.createElement("div"),label=document.createElement("div"),bar=document.createElement("div"),fill=document.createElement("i"),num=document.createElement("strong");row.className="event-row";label.textContent=n.replace("cowrie.","").replaceAll("."," ");bar.className="bar";fill.style.width=`${Math.max(6,c/max*100)}%`;bar.append(fill);a.append(label,bar);num.textContent=c.toLocaleString();row.append(a,num);return row}));if(!types.length)typeBox.innerHTML='<div class="empty">No event signals yet.</div>';
+ markers.clearLayers();bounds=L.latLngBounds([]);const seen=new Set();located.forEach(e=>{if(seen.has(e.ip))return;seen.add(e.ip);const lat=Number(e.lat),lon=Number(e.lon),marker=L.circleMarker([lat,lon],{radius:7,color:"#fff7ea",weight:2,fillColor:"#d95c3b",fillOpacity:.88});marker.bindPopup(`<strong>${e.ip}</strong><br>${e.city||"Unknown city"}, ${e.country||"Unknown country"}<br><span class="mono">${lat.toFixed(4)}, ${lon.toFixed(4)}</span>`).addTo(markers);bounds.extend([lat,lon])});if(bounds.isValid())map.fitBounds(bounds,{padding:[34,34],maxZoom:4});$("mapCount").textContent=`${seen.size.toLocaleString()} mapped locations`;$("mapStatus").textContent=seen.size?"Live locations mapped":"No geolocated events";$("mapDetail").textContent=seen.size?"New source IPs appear automatically.":"Waiting for events with coordinates.";
+ const feed=$("feed");feed.replaceChildren(...all.slice(0,MAX_FEED).map(e=>{const item=document.createElement("article"),line=document.createElement("div"),badge=document.createElement("span"),when=document.createElement("span"),ip=document.createElement("div"),place=document.createElement("div"),[label,cls]=state(e);item.className="feed-item";line.className="feed-line";badge.className=`status ${cls}`;badge.textContent=label;when.className="mono muted";when.textContent=time(e.timestamp);line.append(badge,when);ip.className="feed-ip";ip.textContent=e.ip;place.className="feed-detail";place.textContent=`${e.city||"Unknown city"}, ${e.country||"Unknown country"}`;item.append(line,ip,place);return item}));if(!all.length)feed.innerHTML='<div class="feed-item empty">No connections recorded yet.</div>'}
+async function refresh(){try{const[a,b]=await Promise.all([fetch(`${API_BASE}/events?limit=${MAX_EVENTS}`),fetch(`${API_BASE}/stats`)]);if(!a.ok||!b.ok)throw Error();events=((await a.json()).events||[]).filter(Boolean);stats=await b.json();connected(true)}catch{const r=await fetch("./cowrie_alerts.json");if(!r.ok)throw Error("Unable to load dashboard data");events=await r.json();stats=null;connected(false)}render()}function start(){stream?.close();stream=new EventSource(`${API_BASE}/stream`);stream.addEventListener("open",()=>connected(true));stream.addEventListener("error",()=>connected(false));stream.addEventListener("attack",m=>{try{const e=JSON.parse(m.data);if(!events.some(x=>id(x)===id(e))){events=[e,...events].slice(0,MAX_EVENTS);stats=null;render()}}catch{}})}map=L.map("map",{worldCopyJump:true}).setView([20,0],2);L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap contributors"}).addTo(map);markers=L.layerGroup().addTo(map);bounds=L.latLngBounds([]);$("refresh").onclick=refresh;refresh().then(start).catch(e=>{$("mapStatus").textContent="Data unavailable";$("mapDetail").textContent=e.message});
+</script></body></html>
