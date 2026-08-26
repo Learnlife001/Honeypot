@@ -69,7 +69,7 @@ The project intentionally provides two different dashboard views:
 | [Public dashboard](https://honeypot.greglabs.nl/) | Portfolio visitors and observers | Live metrics, geographic source map, country/IP trends, event categories, and a redacted connection feed. |
 | Operator dashboard | The system administrator | Full operational telemetry, including attempted credential trends and command/session context. It must be access-restricted in a production deployment. |
 
-The public Vercel frontend reads the live API with an exact CORS allow-list and has a bundled historical fallback. It deliberately does **not** show attempted usernames, passwords, entered commands, session identifiers, or raw messages. Attempted credentials may contain reused or leaked personal data, so they are operational intelligence for the administrator rather than public content.
+The public Vercel frontend reads the live API with an exact CORS allow-list and has a bundled synthetic fallback for demonstrations and offline development. It deliberately does **not** show attempted usernames, passwords, entered commands, session identifiers, or raw messages. Attempted credentials may contain reused or leaked personal data, so they are operational intelligence for the administrator rather than public content.
 
 The public dashboard uses a bright, accessible visual treatment and includes a custom tab icon. It is still live: new redacted Cowrie events are received through the SSE stream when the backend is available.
 
