@@ -1,0 +1,16 @@
+{
+  "name": "Honeypot Dashboard",
+  "short_name": "Honeypot",
+  "description": "Live, redacted Cowrie SSH honeypot telemetry.",
+  "icons": [
+    {
+      "src": "/favicon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "theme_color": "#f6efe2",
+  "background_color": "#fffdf8",
+  "display": "standalone"
+}
